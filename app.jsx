@@ -7,11 +7,25 @@ const VOICES = [
   { id: "en-male", name: "English (Male)", flag: "\u{1F1EC}\u{1F1E7}" },
   { id: "en-female", name: "English (Female)", flag: "\u{1F1EC}\u{1F1E7}" },
   { id: "es-male", name: "Spanish (Male)", flag: "\u{1F1EA}\u{1F1F8}" },
+  { id: "es-female", name: "Spanish (Female)", flag: "\u{1F1EA}\u{1F1F8}" },
+  { id: "fr-male", name: "French (Male)", flag: "\u{1F1EB}\u{1F1F7}" },
   { id: "fr-female", name: "French (Female)", flag: "\u{1F1EB}\u{1F1F7}" },
   { id: "de-male", name: "German (Male)", flag: "\u{1F1E9}\u{1F1EA}" },
-  { id: "ja-female", name: "Japanese (Female)", flag: "\u{1F1EF}\u{1F1F5}" },
+  { id: "de-female", name: "German (Female)", flag: "\u{1F1E9}\u{1F1EA}" },
   { id: "it-male", name: "Italian (Male)", flag: "\u{1F1EE}\u{1F1F9}" },
-  { id: "pt-female", name: "Portuguese (Female)", flag: "\u{1F1F5}\u{1F1F9}" }
+  { id: "it-female", name: "Italian (Female)", flag: "\u{1F1EE}\u{1F1F9}" },
+  { id: "pt-male", name: "Portuguese (Male)", flag: "\u{1F1F5}\u{1F1F9}" },
+  { id: "pt-female", name: "Portuguese (Female)", flag: "\u{1F1F5}\u{1F1F9}" },
+  { id: "ru-male", name: "Russian (Male)", flag: "\u{1F1F7}\u{1F1FA}" },
+  { id: "ru-female", name: "Russian (Female)", flag: "\u{1F1F7}\u{1F1FA}" },
+  { id: "hi-male", name: "Hindi (Male)", flag: "\u{1F1EE}\u{1F1F3}" },
+  { id: "hi-female", name: "Hindi (Female)", flag: "\u{1F1EE}\u{1F1F3}" },
+  { id: "ja-male", name: "Japanese (Male)", flag: "\u{1F1EF}\u{1F1F5}" },
+  { id: "ja-female", name: "Japanese (Female)", flag: "\u{1F1EF}\u{1F1F5}" },
+  { id: "zh-male", name: "Chinese (Male)", flag: "\u{1F1E8}\u{1F1F3}" },
+  { id: "zh-female", name: "Chinese (Female)", flag: "\u{1F1E8}\u{1F1F3}" },
+  { id: "tl-male", name: "Filipino (Male)", flag: "\u{1F1F5}\u{1F1ED}" },
+  { id: "tl-female", name: "Filipino (Female)", flag: "\u{1F1F5}\u{1F1ED}" }
 ];
 const playAudioQueue = (audioUrls, onEnd) => {
   let currentIndex = 0;
@@ -40,12 +54,12 @@ function VoiceSelectorButton({ selectedVoice, onClick }) {
       children: [
         /* @__PURE__ */ jsxDEV("span", { className: "text-lg", children: voiceDetails?.flag || "\u{1F50A}" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 43,
+          lineNumber: 57,
           columnNumber: 13
         }, this),
         /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-chevron-down text-xs text-gray-400" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 44,
+          lineNumber: 58,
           columnNumber: 13
         }, this)
       ]
@@ -54,7 +68,7 @@ function VoiceSelectorButton({ selectedVoice, onClick }) {
     true,
     {
       fileName: "<stdin>",
-      lineNumber: 38,
+      lineNumber: 52,
       columnNumber: 9
     },
     this
@@ -70,12 +84,12 @@ function VoiceSelectorModal({ isOpen, onClose, selectedVoice, onSelectVoice }) {
       children: /* @__PURE__ */ jsxDEV(
         "div",
         {
-          className: `w-full bg-gray-800 rounded-t-2xl p-4 voice-selector-content`,
+          className: `w-full bg-gray-800 rounded-t-2xl p-4 voice-selector-content ${isOpen ? "open" : ""}`,
           onClick: (e) => e.stopPropagation(),
           children: [
             /* @__PURE__ */ jsxDEV("h3", { className: "text-lg font-semibold text-center mb-4 text-gray-200", children: "Select a Voice" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 61,
+              lineNumber: 75,
               columnNumber: 17
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "space-y-2 max-h-[40vh] overflow-y-auto", children: VOICES.map((voice) => /* @__PURE__ */ jsxDEV(
@@ -89,12 +103,12 @@ function VoiceSelectorModal({ isOpen, onClose, selectedVoice, onSelectVoice }) {
                 children: [
                   /* @__PURE__ */ jsxDEV("span", { className: "text-2xl", children: voice.flag }, void 0, false, {
                     fileName: "<stdin>",
-                    lineNumber: 69,
+                    lineNumber: 83,
                     columnNumber: 29
                   }, this),
                   /* @__PURE__ */ jsxDEV("span", { className: "font-medium", children: voice.name }, void 0, false, {
                     fileName: "<stdin>",
-                    lineNumber: 70,
+                    lineNumber: 84,
                     columnNumber: 29
                   }, this)
                 ]
@@ -103,13 +117,13 @@ function VoiceSelectorModal({ isOpen, onClose, selectedVoice, onSelectVoice }) {
               true,
               {
                 fileName: "<stdin>",
-                lineNumber: 64,
+                lineNumber: 78,
                 columnNumber: 25
               },
               this
             )) }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 62,
+              lineNumber: 76,
               columnNumber: 17
             }, this)
           ]
@@ -118,7 +132,7 @@ function VoiceSelectorModal({ isOpen, onClose, selectedVoice, onSelectVoice }) {
         true,
         {
           fileName: "<stdin>",
-          lineNumber: 57,
+          lineNumber: 71,
           columnNumber: 13
         },
         this
@@ -128,7 +142,7 @@ function VoiceSelectorModal({ isOpen, onClose, selectedVoice, onSelectVoice }) {
     false,
     {
       fileName: "<stdin>",
-      lineNumber: 53,
+      lineNumber: 67,
       columnNumber: 9
     },
     this
@@ -268,7 +282,7 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
         setIsAiThinking(false);
         return;
       }
-      const uniqueSnippets = Array.from(new Map(allSnippets.map((item) => [item.audioUrl, item])).values());
+      const uniqueSnippets = Array.from(new Map(allSnippets.map((item) => [item.audioUrl, item]))).values();
       const systemPrompt = `You are an AI that can only communicate by selecting and combining pre-existing text snippets from a provided list.
 Given a user's message and a list of available snippets (with IDs), you must select a sequence of snippet IDs that forms the most coherent and relevant response.
 Respond ONLY with a JSON object containing a 'selected_ids' key, which is an array of the integer IDs of the snippets you've chosen in the correct order.
@@ -322,104 +336,104 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
     /* @__PURE__ */ jsxDEV("header", { className: "bg-gray-800 p-4 shadow-md z-10 flex justify-between items-center", children: [
       /* @__PURE__ */ jsxDEV("h1", { className: "text-xl font-bold text-indigo-400", children: "AI Voice Trainer" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 294,
+        lineNumber: 308,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("button", { onClick: () => setIsSettingsOpen(true), className: "p-2 rounded-md hover:bg-gray-700 focus-ring", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-cog" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 296,
+        lineNumber: 310,
         columnNumber: 21
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 295,
+        lineNumber: 309,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 293,
+      lineNumber: 307,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("main", { className: "flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900", children: [
       messages.map((msg, index) => /* @__PURE__ */ jsxDEV("div", { className: `flex items-end gap-2 chat-bubble ${msg.author === "user" ? "justify-end" : "justify-start"}`, children: [
         msg.author === "ai" && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-robot" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 303,
+          lineNumber: 317,
           columnNumber: 148
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 303,
+          lineNumber: 317,
           columnNumber: 49
         }, this),
         /* @__PURE__ */ jsxDEV("div", { className: `max-w-[80%] md:max-w-md p-3 rounded-lg ${msg.author === "user" ? "bg-blue-600 rounded-br-none" : "bg-gray-700 rounded-bl-none"} ${msg.author === "system" ? "bg-red-600" : ""}`, children: [
           msg.isTyping ? /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center space-x-1", children: [
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-0" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 307,
+              lineNumber: 321,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 308,
+              lineNumber: 322,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 309,
+              lineNumber: 323,
               columnNumber: 37
             }, this)
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 306,
+            lineNumber: 320,
             columnNumber: 33
           }, this) : msg.text,
           msg.author === "ai" && msg.audioUrls && msg.audioUrls.length > 0 && /* @__PURE__ */ jsxDEV("button", { onClick: () => playAudioQueue(msg.audioUrls), className: "mt-2 text-indigo-300 hover:text-indigo-200 text-sm", children: [
             /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-play-circle mr-1" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 314,
+              lineNumber: 328,
               columnNumber: 37
             }, this),
             " Replay"
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 313,
+            lineNumber: 327,
             columnNumber: 33
           }, this),
           msg.canRetry && /* @__PURE__ */ jsxDEV("button", { onClick: handleRetry, className: "mt-2 text-indigo-300 hover:text-indigo-200 text-sm", disabled: isAiThinking, children: [
             /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-arrows-rotate mr-1" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 319,
+              lineNumber: 333,
               columnNumber: 37
             }, this),
             " Try Again"
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 318,
+            lineNumber: 332,
             columnNumber: 33
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 304,
+          lineNumber: 318,
           columnNumber: 25
         }, this)
       ] }, index, true, {
         fileName: "<stdin>",
-        lineNumber: 302,
+        lineNumber: 316,
         columnNumber: 21
       }, this)),
       /* @__PURE__ */ jsxDEV("div", { ref: chatEndRef }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 325,
+        lineNumber: 339,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 300,
+      lineNumber: 314,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("footer", { className: "p-4 bg-gray-800 shadow-inner", children: /* @__PURE__ */ jsxDEV("form", { onSubmit: handleSendMessage, className: "flex gap-2 items-center", children: [
       /* @__PURE__ */ jsxDEV(VoiceSelectorButton, { selectedVoice, onClick: () => setIsVoiceSelectorOpen(true) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 330,
+        lineNumber: 344,
         columnNumber: 21
       }, this),
       /* @__PURE__ */ jsxDEV(
@@ -436,31 +450,31 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
         false,
         {
           fileName: "<stdin>",
-          lineNumber: 331,
+          lineNumber: 345,
           columnNumber: 21
         },
         this
       ),
       /* @__PURE__ */ jsxDEV("button", { type: "submit", className: "bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:cursor-not-allowed text-white font-bold p-2 rounded-md focus-ring w-12 h-10 flex items-center justify-center", disabled: isAiThinking || isUserSubmitting, children: isUserSubmitting ? /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 340,
+        lineNumber: 354,
         columnNumber: 45
       }, this) : /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-paper-plane" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 340,
+        lineNumber: 354,
         columnNumber: 148
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 339,
+        lineNumber: 353,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 329,
+      lineNumber: 343,
       columnNumber: 17
     }, this) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 328,
+      lineNumber: 342,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV(
@@ -475,35 +489,35 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
       false,
       {
         fileName: "<stdin>",
-        lineNumber: 345,
+        lineNumber: 359,
         columnNumber: 13
       },
       this
     ),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed inset-0 bg-black bg-opacity-50 z-40 ${isSettingsOpen ? "block" : "hidden"}`, onClick: () => setIsSettingsOpen(false) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 353,
+      lineNumber: 367,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed bottom-0 left-0 right-0 bg-gray-800 p-6 rounded-t-2xl shadow-2xl z-50 settings-panel ${isSettingsOpen ? "open" : "closed"}`, children: [
       /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between items-center mb-4", children: [
         /* @__PURE__ */ jsxDEV("h2", { className: "text-lg font-semibold", children: "AI Settings" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 356,
+          lineNumber: 370,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("button", { onClick: () => setIsSettingsOpen(false), className: "p-2 rounded-md hover:bg-gray-700 focus-ring", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-times" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 358,
+          lineNumber: 372,
           columnNumber: 25
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 357,
+          lineNumber: 371,
           columnNumber: 21
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 355,
+        lineNumber: 369,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { children: [
@@ -511,17 +525,17 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
           "Other users to learn from: ",
           /* @__PURE__ */ jsxDEV("span", { className: "font-bold text-indigo-400", children: aiDataSourceCount === 0 ? "Just Me" : aiDataSourceCount }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 363,
+            lineNumber: 377,
             columnNumber: 52
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 362,
+          lineNumber: 376,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mb-3", children: "Controls how many random users' chat snippets the AI can use." }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 365,
+          lineNumber: 379,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -539,30 +553,30 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 366,
+            lineNumber: 380,
             columnNumber: 21
           },
           this
         )
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 361,
+        lineNumber: 375,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 354,
+      lineNumber: 368,
       columnNumber: 13
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 292,
+    lineNumber: 306,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 382,
+  lineNumber: 396,
   columnNumber: 13
 }));

@@ -509,7 +509,7 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           {
             onClick: () => setChatMode("personal"),
             className: `py-2 px-4 text-sm font-medium chat-mode-tab ${chatMode === "personal" ? "border-b-2 border-indigo-400 text-indigo-400" : "text-gray-400 hover:text-white"}`,
-            children: "Personal"
+            children: "Solo"
           },
           void 0,
           false,

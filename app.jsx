@@ -267,7 +267,7 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
         setIsAiThinking(false);
         return;
       }
-      const uniqueSnippets = Array.from(new Map(allSnippets.map((item) => [item.audioUrl, item]))).values();
+      const uniqueSnippets = [...new Map(allSnippets.map((item) => [item.audioUrl, item])).values()];
       const getAiSelection = async (systemPrompt) => {
         const completion = await websim.chat.completions.create({
           messages: [

@@ -217,8 +217,6 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
     }
     setIsUserSubmitting(true);
     setUserInput("");
-    const userMessage = { author: "user", text: userMessageText };
-    setMessages((prev) => [...prev, userMessage]);
     try {
       const ttsResult = await websim.textToSpeech({ text: userMessageText, voice: selectedVoice });
       const newSnippet = {
@@ -227,18 +225,30 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
         timestamp: (/* @__PURE__ */ new Date()).toISOString(),
         voice: selectedVoice
       };
-      const updatedMessages = [...userHistory, newSnippet];
-      await room.collection("chat_histories").upsert({
-        id: currentUser.id,
-        messages: updatedMessages
+      const audio = new Audio(newSnippet.audioUrl);
+      audio.play().catch((e2) => {
+        console.error("User audio playback error:", e2);
+        handlePostAudio(newSnippet);
       });
-      setIsUserSubmitting(false);
-      triggerAiResponse(userMessageText);
+      audio.onended = () => {
+        handlePostAudio(newSnippet);
+      };
     } catch (error) {
       console.error("Error sending message:", error);
       setIsUserSubmitting(false);
+      setUserInput(userMessageText);
       setMessages((prev) => [...prev, { author: "system", text: "Error generating audio. Please try again." }]);
     }
+  };
+  const handlePostAudio = async (newSnippet) => {
+    setMessages((prev) => [...prev, { author: "user", text: newSnippet.text }]);
+    const updatedMessages = [...userHistory, newSnippet];
+    await room.collection("chat_histories").upsert({
+      id: currentUser.id,
+      messages: updatedMessages
+    });
+    setIsUserSubmitting(false);
+    triggerAiResponse(newSnippet.text);
   };
   const triggerAiResponse = async (userMessageText) => {
     setIsAiThinking(true);
@@ -312,104 +322,104 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
     /* @__PURE__ */ jsxDEV("header", { className: "bg-gray-800 p-4 shadow-md z-10 flex justify-between items-center", children: [
       /* @__PURE__ */ jsxDEV("h1", { className: "text-xl font-bold text-indigo-400", children: "AI Voice Trainer" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 275,
+        lineNumber: 294,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("button", { onClick: () => setIsSettingsOpen(true), className: "p-2 rounded-md hover:bg-gray-700 focus-ring", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-cog" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 277,
+        lineNumber: 296,
         columnNumber: 21
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 276,
+        lineNumber: 295,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 274,
+      lineNumber: 293,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("main", { className: "flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900", children: [
       messages.map((msg, index) => /* @__PURE__ */ jsxDEV("div", { className: `flex items-end gap-2 chat-bubble ${msg.author === "user" ? "justify-end" : "justify-start"}`, children: [
         msg.author === "ai" && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-robot" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 284,
+          lineNumber: 303,
           columnNumber: 148
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 284,
+          lineNumber: 303,
           columnNumber: 49
         }, this),
         /* @__PURE__ */ jsxDEV("div", { className: `max-w-[80%] md:max-w-md p-3 rounded-lg ${msg.author === "user" ? "bg-blue-600 rounded-br-none" : "bg-gray-700 rounded-bl-none"} ${msg.author === "system" ? "bg-red-600" : ""}`, children: [
           msg.isTyping ? /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center space-x-1", children: [
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-0" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 288,
+              lineNumber: 307,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 289,
+              lineNumber: 308,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 290,
+              lineNumber: 309,
               columnNumber: 37
             }, this)
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 287,
+            lineNumber: 306,
             columnNumber: 33
           }, this) : msg.text,
           msg.author === "ai" && msg.audioUrls && msg.audioUrls.length > 0 && /* @__PURE__ */ jsxDEV("button", { onClick: () => playAudioQueue(msg.audioUrls), className: "mt-2 text-indigo-300 hover:text-indigo-200 text-sm", children: [
             /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-play-circle mr-1" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 295,
+              lineNumber: 314,
               columnNumber: 37
             }, this),
             " Replay"
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 294,
+            lineNumber: 313,
             columnNumber: 33
           }, this),
           msg.canRetry && /* @__PURE__ */ jsxDEV("button", { onClick: handleRetry, className: "mt-2 text-indigo-300 hover:text-indigo-200 text-sm", disabled: isAiThinking, children: [
             /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-arrows-rotate mr-1" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 300,
+              lineNumber: 319,
               columnNumber: 37
             }, this),
             " Try Again"
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 299,
+            lineNumber: 318,
             columnNumber: 33
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 285,
+          lineNumber: 304,
           columnNumber: 25
         }, this)
       ] }, index, true, {
         fileName: "<stdin>",
-        lineNumber: 283,
+        lineNumber: 302,
         columnNumber: 21
       }, this)),
       /* @__PURE__ */ jsxDEV("div", { ref: chatEndRef }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 306,
+        lineNumber: 325,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 281,
+      lineNumber: 300,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("footer", { className: "p-4 bg-gray-800 shadow-inner", children: /* @__PURE__ */ jsxDEV("form", { onSubmit: handleSendMessage, className: "flex gap-2 items-center", children: [
       /* @__PURE__ */ jsxDEV(VoiceSelectorButton, { selectedVoice, onClick: () => setIsVoiceSelectorOpen(true) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 311,
+        lineNumber: 330,
         columnNumber: 21
       }, this),
       /* @__PURE__ */ jsxDEV(
@@ -426,31 +436,31 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
         false,
         {
           fileName: "<stdin>",
-          lineNumber: 312,
+          lineNumber: 331,
           columnNumber: 21
         },
         this
       ),
       /* @__PURE__ */ jsxDEV("button", { type: "submit", className: "bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:cursor-not-allowed text-white font-bold p-2 rounded-md focus-ring w-12 h-10 flex items-center justify-center", disabled: isAiThinking || isUserSubmitting, children: isUserSubmitting ? /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 321,
+        lineNumber: 340,
         columnNumber: 45
       }, this) : /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-paper-plane" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 321,
+        lineNumber: 340,
         columnNumber: 148
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 320,
+        lineNumber: 339,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 310,
+      lineNumber: 329,
       columnNumber: 17
     }, this) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 309,
+      lineNumber: 328,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV(
@@ -465,35 +475,35 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
       false,
       {
         fileName: "<stdin>",
-        lineNumber: 326,
+        lineNumber: 345,
         columnNumber: 13
       },
       this
     ),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed inset-0 bg-black bg-opacity-50 z-40 ${isSettingsOpen ? "block" : "hidden"}`, onClick: () => setIsSettingsOpen(false) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 334,
+      lineNumber: 353,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed bottom-0 left-0 right-0 bg-gray-800 p-6 rounded-t-2xl shadow-2xl z-50 settings-panel ${isSettingsOpen ? "open" : "closed"}`, children: [
       /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between items-center mb-4", children: [
         /* @__PURE__ */ jsxDEV("h2", { className: "text-lg font-semibold", children: "AI Settings" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 337,
+          lineNumber: 356,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("button", { onClick: () => setIsSettingsOpen(false), className: "p-2 rounded-md hover:bg-gray-700 focus-ring", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-times" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 339,
+          lineNumber: 358,
           columnNumber: 25
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 338,
+          lineNumber: 357,
           columnNumber: 21
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 336,
+        lineNumber: 355,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { children: [
@@ -501,17 +511,17 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
           "Other users to learn from: ",
           /* @__PURE__ */ jsxDEV("span", { className: "font-bold text-indigo-400", children: aiDataSourceCount === 0 ? "Just Me" : aiDataSourceCount }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 344,
+            lineNumber: 363,
             columnNumber: 52
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 343,
+          lineNumber: 362,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mb-3", children: "Controls how many random users' chat snippets the AI can use." }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 346,
+          lineNumber: 365,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -529,30 +539,30 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 347,
+            lineNumber: 366,
             columnNumber: 21
           },
           this
         )
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 342,
+        lineNumber: 361,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 335,
+      lineNumber: 354,
       columnNumber: 13
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 273,
+    lineNumber: 292,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 363,
+  lineNumber: 382,
   columnNumber: 13
 }));

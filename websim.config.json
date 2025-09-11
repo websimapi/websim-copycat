@@ -1,0 +1,18 @@
+{
+  "database": {
+    "schema": {
+      "chat_histories": {
+        "id": {
+          "type": "text",
+          "description": "User ID, serves as the primary key."
+        },
+        "messages": {
+          "type": "jsonb",
+          "description": "An array of message objects from the user. Each object contains text, audioUrl, timestamp, and voice."
+        }
+      }
+    },
+    "instructions": "Each user has a single row in the 'chat_histories' table, identified by their user ID. The 'messages' column contains a JSON array of all chat snippets they've generated. To get a random set of snippets for the AI, you can query this table and sample rows."
+  }
+}
+

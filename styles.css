@@ -1,0 +1,61 @@
+body {
+    overscroll-behavior: none;
+}
+
+#root {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh; /* Dynamic viewport height */
+}
+
+/* Scrollbar styling for webkit browsers */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #1f2937; /* bg-gray-800 */
+}
+::-webkit-scrollbar-thumb {
+    background: #4b5563; /* bg-gray-600 */
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #6b7280; /* bg-gray-500 */
+}
+
+/* Custom focus ring */
+.focus-ring {
+    transition: box-shadow 0.2s ease-in-out;
+}
+.focus-ring:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.5); /* indigo-500 with opacity */
+}
+
+/* Animate settings panel */
+.settings-panel {
+    transition: transform 0.3s ease-in-out;
+}
+
+.settings-panel.open {
+    transform: translateY(0);
+}
+
+.settings-panel.closed {
+    transform: translateY(100%);
+}
+
+.chat-bubble {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: slide-in 0.3s forwards;
+}
+
+@keyframes slide-in {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+

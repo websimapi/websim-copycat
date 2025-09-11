@@ -267,7 +267,7 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
         setIsAiThinking(false);
         return;
       }
-      const uniqueSnippets = Array.from(new Map(allSnippets.map((item) => [item.audioUrl, item]))).values();
+      const uniqueSnippets = Array.from(new Map(allSnippets.map((item) => [item.audioUrl, item])).values());
       const systemPrompt = `You are an AI that can only communicate by selecting and combining pre-existing text snippets from a provided list.
 Given a user's message and a list of available snippets (with IDs), you must select a sequence of snippet IDs that forms the most coherent and relevant response.
 Respond ONLY with a JSON object containing a 'selected_ids' key, which is an array of the integer IDs of the snippets you've chosen in the correct order.

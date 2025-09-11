@@ -13,13 +13,34 @@ const VOICES = [
   { id: "it-male", name: "Italian (Male)", flag: "\u{1F1EE}\u{1F1F9}" },
   { id: "pt-female", name: "Portuguese (Female)", flag: "\u{1F1F5}\u{1F1F9}" }
 ];
+const PERSONAL_CHAT_GREETING = {
+  id: "greeting-personal",
+  author: "ai",
+  text: "Hello! Teach me to speak. Type something, select a voice, and send it. I will learn from your words and the words of others.",
+  audioUrls: []
+};
+const REALTIME_CHAT_GREETING = {
+  id: "greeting-realtime",
+  author: "ai",
+  text: "Welcome to the realtime chat! All messages here are shared with everyone in the room. Let's teach the AI together.",
+  audioUrls: []
+};
 const playAudioQueue = (audioUrls, onEnd) => {
+  if (!audioUrls || audioUrls.length === 0) {
+    if (onEnd) onEnd();
+    return;
+  }
   let currentIndex = 0;
   const playNext = () => {
     if (currentIndex < audioUrls.length) {
       const audio = new Audio(audioUrls[currentIndex]);
       audio.play().catch((e) => console.error("Audio play error:", e));
       audio.onended = () => {
+        currentIndex++;
+        playNext();
+      };
+      audio.onerror = () => {
+        console.error("Error loading audio:", audioUrls[currentIndex]);
         currentIndex++;
         playNext();
       };
@@ -40,12 +61,12 @@ function VoiceSelectorButton({ selectedVoice, onClick }) {
       children: [
         /* @__PURE__ */ jsxDEV("span", { className: "text-lg", children: voiceDetails?.flag || "\u{1F50A}" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 43,
+          lineNumber: 66,
           columnNumber: 13
         }, this),
         /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-chevron-down text-xs text-gray-400" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 44,
+          lineNumber: 67,
           columnNumber: 13
         }, this)
       ]
@@ -54,7 +75,7 @@ function VoiceSelectorButton({ selectedVoice, onClick }) {
     true,
     {
       fileName: "<stdin>",
-      lineNumber: 38,
+      lineNumber: 61,
       columnNumber: 9
     },
     this
@@ -70,7 +91,7 @@ function VoiceSelectorDropdown({ isOpen, onClose, selectedVoice, onSelectVoice }
       children: /* @__PURE__ */ jsxDEV("div", { className: "p-2 max-h-[40vh] overflow-y-auto", children: [
         /* @__PURE__ */ jsxDEV("h3", { className: "text-sm font-semibold text-center mb-2 text-gray-400 px-2 pt-1", children: "Select a Voice" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 58,
+          lineNumber: 81,
           columnNumber: 18
         }, this),
         VOICES.map((voice) => /* @__PURE__ */ jsxDEV(
@@ -84,12 +105,12 @@ function VoiceSelectorDropdown({ isOpen, onClose, selectedVoice, onSelectVoice }
             children: [
               /* @__PURE__ */ jsxDEV("span", { className: "text-xl", children: voice.flag }, void 0, false, {
                 fileName: "<stdin>",
-                lineNumber: 65,
+                lineNumber: 88,
                 columnNumber: 25
               }, this),
               /* @__PURE__ */ jsxDEV("span", { children: voice.name }, void 0, false, {
                 fileName: "<stdin>",
-                lineNumber: 66,
+                lineNumber: 89,
                 columnNumber: 25
               }, this)
             ]
@@ -98,14 +119,14 @@ function VoiceSelectorDropdown({ isOpen, onClose, selectedVoice, onSelectVoice }
           true,
           {
             fileName: "<stdin>",
-            lineNumber: 60,
+            lineNumber: 83,
             columnNumber: 21
           },
           this
         ))
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 57,
+        lineNumber: 80,
         columnNumber: 13
       }, this)
     },
@@ -113,7 +134,7 @@ function VoiceSelectorDropdown({ isOpen, onClose, selectedVoice, onSelectVoice }
     false,
     {
       fileName: "<stdin>",
-      lineNumber: 53,
+      lineNumber: 76,
       columnNumber: 9
     },
     this
@@ -121,7 +142,7 @@ function VoiceSelectorDropdown({ isOpen, onClose, selectedVoice, onSelectVoice }
 }
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([PERSONAL_CHAT_GREETING]);
   const [userInput, setUserInput] = useState("");
   const [selectedVoice, setSelectedVoice] = useState(VOICES[0].id);
   const [isAiThinking, setIsAiThinking] = useState(false);
@@ -130,20 +151,38 @@ function App() {
   const [isVoiceSelectorOpen, setIsVoiceSelectorOpen] = useState(false);
   const [aiDataSourceCount, setAiDataSourceCount] = useState(11);
   const [lastFailedAttempt, setLastFailedAttempt] = useState(null);
+  const [chatMode, setChatMode] = useState("personal");
   const chatEndRef = useRef(null);
   const voiceSelectorRef = useRef(null);
   const { data: userHistoryData, loading: historyLoading } = useQuery(
     currentUser ? room.collection("chat_histories").filter({ id: currentUser.id }) : null
   );
   const userHistory = userHistoryData?.[0]?.messages || [];
+  const { data: realtimeMessagesData } = useQuery(
+    chatMode === "realtime" ? room.query('SELECT id, author, username, text, audio_urls as "audioUrls", created_at FROM public.realtime_chat_messages ORDER BY created_at ASC') : null
+  );
   useEffect(() => {
-    window.websim.getCurrentUser().then(setCurrentUser);
-    setMessages([{
-      author: "ai",
-      text: "Hello! Teach me to speak. Type something, select a voice, and send it. I will learn from your words and the words of others.",
-      audioUrls: []
-    }]);
+    const initialize = async () => {
+      const user = await window.websim.getCurrentUser();
+      setCurrentUser(user);
+      await room.initialize();
+      room.onmessage = (event) => {
+        const data = event.data;
+        if (data.type === "play_audio_realtime" && Array.isArray(data.urls)) {
+          playAudioQueue(data.urls);
+        }
+      };
+    };
+    initialize();
   }, []);
+  useEffect(() => {
+    if (chatMode === "realtime") {
+      const formattedMessages = realtimeMessagesData ? realtimeMessagesData.map((msg) => ({ ...msg, isUser: msg.author === "user" && msg.username === currentUser?.username })) : [];
+      setMessages([REALTIME_CHAT_GREETING, ...formattedMessages]);
+    } else {
+      setMessages([PERSONAL_CHAT_GREETING]);
+    }
+  }, [chatMode, realtimeMessagesData, currentUser]);
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -164,14 +203,16 @@ function App() {
     if (!lastFailedAttempt || isAiThinking) return;
     const { userMessageText, uniqueSnippets } = lastFailedAttempt;
     setIsAiThinking(true);
-    setMessages((prev) => {
-      const newMessages = [...prev];
-      const lastMsgIndex = newMessages.length - 1;
-      if (newMessages[lastMsgIndex].canRetry) {
-        newMessages[lastMsgIndex] = { author: "ai", text: "...", isTyping: true };
-      }
-      return newMessages;
-    });
+    if (chatMode === "personal") {
+      setMessages((prev) => {
+        const newMessages = [...prev];
+        const lastMsgIndex = newMessages.length - 1;
+        if (newMessages[lastMsgIndex].canRetry) {
+          newMessages[lastMsgIndex] = { author: "ai", text: "...", isTyping: true };
+        }
+        return newMessages;
+      });
+    }
     try {
       const systemPrompt = `You are an AI that can only communicate by selecting and combining pre-existing text snippets from a provided list. Your first attempt to find a coherent response failed. For this second attempt, try to be more creative. The response doesn't have to be a perfect fit, but it should be thematically or conceptually related to the user's message. Select snippets that are loosely connected if necessary. Use as many snippets as you need to form a response. Respond ONLY with a JSON object containing a 'selected_ids' key, which is an array of the integer IDs of the snippets you've chosen in the correct order. If you still cannot find anything, return an empty array.`;
       const completion = await websim.chat.completions.create({
@@ -186,19 +227,43 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
       });
       const result = JSON.parse(completion.content);
       const selectedIds = result.selected_ids || [];
+      const newAiMessage = {
+        author: "ai",
+        text: "I couldn't find the right words to respond.",
+        audioUrls: [],
+        canRetry: true
+      };
       if (selectedIds.length > 0) {
         const selectedSnippets = selectedIds.map((id) => uniqueSnippets[id]).filter(Boolean);
-        const aiResponseText = selectedSnippets.map((s) => s.text).join(" ");
-        const aiAudioUrls = selectedSnippets.map((s) => s.audioUrl);
-        setMessages((prev) => prev.slice(0, -1).concat({ author: "ai", text: aiResponseText, audioUrls: aiAudioUrls }));
-        playAudioQueue(aiAudioUrls);
+        newAiMessage.text = selectedSnippets.map((s) => s.text).join(" ");
+        newAiMessage.audioUrls = selectedSnippets.map((s) => s.audioUrl);
+        newAiMessage.canRetry = false;
+        playAudioQueue(newAiMessage.audioUrls);
+        if (chatMode === "realtime") {
+          room.send({ type: "play_audio_realtime", urls: newAiMessage.audioUrls, echo: false });
+        }
+      }
+      if (chatMode === "personal") {
+        setMessages((prev) => prev.slice(0, -1).concat(newAiMessage));
       } else {
-        setMessages((prev) => prev.slice(0, -1).concat({ author: "ai", text: "I tried again, but still couldn't find the right words.", audioUrls: [], canRetry: true }));
-        setLastFailedAttempt({ userMessageText, uniqueSnippets });
+        await room.collection("realtime_chat_messages").create({
+          author: "ai",
+          text: newAiMessage.text,
+          audio_urls: newAiMessage.audioUrls
+        });
       }
     } catch (error) {
       console.error("AI Retry Error:", error);
-      setMessages((prev) => prev.slice(0, -1).concat({ author: "system", text: "The AI encountered an error while retrying." }));
+      const retryErrMessage = { author: "system", text: "The AI encountered an error while retrying." };
+      if (chatMode === "personal") {
+        setMessages((prev) => prev.slice(0, -1).concat(retryErrMessage));
+      } else {
+        await room.collection("realtime_chat_messages").create({
+          author: "system",
+          text: retryErrMessage.text,
+          audio_urls: []
+        });
+      }
     } finally {
       setIsAiThinking(false);
       setLastFailedAttempt(null);
@@ -232,6 +297,10 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
       audio.onended = () => {
         handlePostAudio(newSnippet);
       };
+      audio.onerror = () => {
+        console.error("User audio failed to play");
+        handlePostAudio(newSnippet);
+      };
     } catch (error) {
       console.error("Error sending message:", error);
       setIsUserSubmitting(false);
@@ -240,30 +309,51 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
     }
   };
   const handlePostAudio = async (newSnippet) => {
-    setMessages((prev) => [...prev, { author: "user", text: newSnippet.text, isUser: true }]);
-    const updatedMessages = [...userHistory, newSnippet];
-    await room.collection("chat_histories").upsert({
-      id: currentUser.id,
-      messages: updatedMessages
-    });
+    if (chatMode === "personal") {
+      setMessages((prev) => [...prev, { author: "user", text: newSnippet.text, isUser: true }]);
+      const updatedMessages = [...userHistory, newSnippet];
+      await room.collection("chat_histories").upsert({
+        id: currentUser.id,
+        messages: updatedMessages
+      });
+    } else {
+      await room.collection("realtime_chat_messages").create({
+        author: "user",
+        username: currentUser.username,
+        text: newSnippet.text,
+        audio_urls: [newSnippet.audioUrl]
+      });
+      room.send({ type: "play_audio_realtime", urls: [newSnippet.audioUrl], echo: false });
+    }
     setIsUserSubmitting(false);
     triggerAiResponse(newSnippet.text);
   };
   const triggerAiResponse = async (userMessageText) => {
     setIsAiThinking(true);
-    setMessages((prev) => [...prev, { author: "ai", text: "...", isTyping: true }]);
+    if (chatMode === "personal") {
+      setMessages((prev) => [...prev, { author: "ai", text: "...", isTyping: true }]);
+    }
     setLastFailedAttempt(null);
     try {
       const otherUsersData = await room.query("SELECT messages FROM public.chat_histories WHERE id != $1 ORDER BY random() LIMIT $2", [currentUser.id, aiDataSourceCount]);
       const otherSnippets = otherUsersData.flatMap((row) => row.messages || []);
       const userSnippets = userHistoryData?.[0]?.messages || [];
       const allSnippets = [...userSnippets, ...otherSnippets];
+      const aiThinkingFailed = (text, canRetry = false) => {
+        const msg = { author: "ai", text, audioUrls: [], canRetry };
+        if (chatMode === "personal") {
+          setMessages((prev) => prev.slice(0, -1).concat(msg));
+          if (canRetry) setLastFailedAttempt({ userMessageText, uniqueSnippets });
+        } else {
+          room.collection("realtime_chat_messages").create({
+            author: "ai",
+            text: msg.text,
+            audio_urls: msg.audioUrls
+          });
+        }
+      };
       if (allSnippets.length === 0) {
-        setMessages((prev) => prev.slice(0, -1).concat({
-          author: "ai",
-          text: "I have no words to use yet. Please teach me more.",
-          audioUrls: []
-        }));
+        aiThinkingFailed("I have no words to use yet. Please teach me more.");
         setIsAiThinking(false);
         return;
       }
@@ -288,7 +378,7 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}`
 - Combine multiple snippets if it improves the response. A good response can use any number of snippets to form a complete thought.
 - Only use a single snippet if it's a perfect and complete response on its own.
 - Feel free to use more snippets if you think it will make your response more detailed, nuanced, or accurate. There is no hard limit on the number of snippets you can use.
-- Respond ONLY with a JSON object containing a 'selected_ids' key (an array of snippet IDs). If you can't find anything relevant, return an empty array.`;
+- Respond ONLY with a JSON object containing a 'selected_ids' key (an array of snippet IDs). If you can't find anything, return an empty array.`;
       let result = await getAiSelection(initialPrompt);
       let selectedIds = result.selected_ids || [];
       let selectedSnippets = selectedIds.map((id) => uniqueSnippets[id]).filter(Boolean);
@@ -305,135 +395,213 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
       }
       if (selectedIds.length > 0) {
         const aiAudioUrls = selectedSnippets.map((s) => s.audioUrl);
-        setMessages((prev) => prev.slice(0, -1).concat({
+        const aiMessage = {
           author: "ai",
           text: aiResponseText,
           audioUrls: aiAudioUrls
-        }));
+        };
         playAudioQueue(aiAudioUrls);
+        if (chatMode === "realtime") {
+          room.send({ type: "play_audio_realtime", urls: aiAudioUrls, echo: false });
+        }
+        if (chatMode === "personal") {
+          setMessages((prev) => prev.slice(0, -1).concat(aiMessage));
+        } else {
+          await room.collection("realtime_chat_messages").create({
+            author: "ai",
+            text: aiMessage.text,
+            audio_urls: aiMessage.audioUrls
+          });
+        }
       } else {
-        setMessages((prev) => prev.slice(0, -1).concat({
-          author: "ai",
-          text: "I couldn't find the right words to respond.",
-          audioUrls: [],
-          canRetry: true
-        }));
-        setLastFailedAttempt({ userMessageText, uniqueSnippets });
+        aiThinkingFailed("I couldn't find the right words to respond.", true);
       }
     } catch (error) {
       console.error("AI Response Error:", error);
       const errorMessage = error.message.includes("JSON") ? "The AI returned an invalid response. Please try again." : "The AI encountered an error while thinking.";
-      setMessages((prev) => prev.slice(0, -1).concat({
-        author: "system",
-        text: errorMessage
-      }));
+      const systemMessage = { author: "system", text: errorMessage };
+      if (chatMode === "personal") {
+        setMessages((prev) => prev.slice(0, -1).concat(systemMessage));
+      } else {
+        await room.collection("realtime_chat_messages").create({
+          author: "system",
+          text: systemMessage.text,
+          audio_urls: []
+        });
+      }
     } finally {
       setIsAiThinking(false);
     }
   };
+  const isSubmitDisabled = isAiThinking || isUserSubmitting;
   return /* @__PURE__ */ jsxDEV(Fragment, { children: [
     /* @__PURE__ */ jsxDEV("header", { className: "bg-gray-800 p-4 shadow-md z-10 flex justify-between items-center", children: [
       /* @__PURE__ */ jsxDEV("h1", { className: "text-xl font-bold text-indigo-400", children: "Copycat?" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 326,
+        lineNumber: 453,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("button", { onClick: () => setIsSettingsOpen(true), className: "p-2 rounded-md hover:bg-gray-700 focus-ring", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-cog" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 328,
+        lineNumber: 455,
         columnNumber: 21
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 327,
+        lineNumber: 454,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 325,
+      lineNumber: 452,
+      columnNumber: 13
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "bg-gray-800 px-4 pt-2", children: /* @__PURE__ */ jsxDEV("div", { className: "flex border-b border-gray-700", children: [
+      /* @__PURE__ */ jsxDEV(
+        "button",
+        {
+          onClick: () => setChatMode("personal"),
+          className: `py-2 px-4 text-sm font-medium chat-mode-tab ${chatMode === "personal" ? "border-b-2 border-indigo-400 text-indigo-400" : "text-gray-400 hover:text-white"}`,
+          children: "Personal"
+        },
+        void 0,
+        false,
+        {
+          fileName: "<stdin>",
+          lineNumber: 461,
+          columnNumber: 21
+        },
+        this
+      ),
+      /* @__PURE__ */ jsxDEV(
+        "button",
+        {
+          onClick: () => setChatMode("realtime"),
+          className: `py-2 px-4 text-sm font-medium chat-mode-tab ${chatMode === "realtime" ? "border-b-2 border-indigo-400 text-indigo-400" : "text-gray-400 hover:text-white"}`,
+          children: "Realtime"
+        },
+        void 0,
+        false,
+        {
+          fileName: "<stdin>",
+          lineNumber: 467,
+          columnNumber: 21
+        },
+        this
+      )
+    ] }, void 0, true, {
+      fileName: "<stdin>",
+      lineNumber: 460,
+      columnNumber: 17
+    }, this) }, void 0, false, {
+      fileName: "<stdin>",
+      lineNumber: 459,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("main", { className: "flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900", children: [
-      messages.map((msg, index) => /* @__PURE__ */ jsxDEV("div", { className: `flex items-end gap-2 chat-bubble ${msg.author === "user" ? "justify-end" : "justify-start"}`, children: [
+      messages.map((msg, index) => /* @__PURE__ */ jsxDEV("div", { className: `flex items-end gap-2 chat-bubble ${msg.isUser ? "justify-end" : "justify-start"}`, children: [
         msg.author === "ai" && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-robot" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 335,
+          lineNumber: 479,
           columnNumber: 148
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 335,
+          lineNumber: 479,
           columnNumber: 49
         }, this),
-        /* @__PURE__ */ jsxDEV("div", { className: `max-w-[80%] md:max-w-md p-3 rounded-lg ${msg.author === "user" ? "bg-blue-600 rounded-br-none" : "bg-gray-700 rounded-bl-none"} ${msg.author === "system" ? "bg-red-600" : ""}`, children: [
+        msg.author === "user" && !msg.isUser && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0", title: msg.username, children: /* @__PURE__ */ jsxDEV("img", { src: `https://images.websim.com/avatar/${msg.username}`, alt: msg.username, className: "w-full h-full rounded-full" }, void 0, false, {
+          fileName: "<stdin>",
+          lineNumber: 482,
+          columnNumber: 33
+        }, this) }, void 0, false, {
+          fileName: "<stdin>",
+          lineNumber: 481,
+          columnNumber: 29
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: `max-w-[80%] md:max-w-md p-3 rounded-lg ${msg.isUser ? "bg-blue-600 rounded-br-none" : "bg-gray-700 rounded-bl-none"} ${msg.author === "system" ? "bg-red-600" : ""}`, children: [
+          msg.author === "user" && !msg.isUser && /* @__PURE__ */ jsxDEV("div", { className: "text-xs font-bold text-indigo-300 mb-1", children: msg.username }, void 0, false, {
+            fileName: "<stdin>",
+            lineNumber: 486,
+            columnNumber: 70
+          }, this),
           msg.isTyping ? /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center space-x-1", children: [
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-0" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 339,
+              lineNumber: 489,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 340,
+              lineNumber: 490,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 341,
+              lineNumber: 491,
               columnNumber: 37
             }, this)
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 338,
+            lineNumber: 488,
             columnNumber: 33
           }, this) : msg.text,
           msg.author === "ai" && msg.audioUrls && msg.audioUrls.length > 0 && /* @__PURE__ */ jsxDEV("button", { onClick: () => playAudioQueue(msg.audioUrls), className: "mt-2 text-indigo-300 hover:text-indigo-200 text-sm", children: [
             /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-play-circle mr-1" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 346,
+              lineNumber: 496,
               columnNumber: 37
             }, this),
             " Replay"
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 345,
+            lineNumber: 495,
             columnNumber: 33
           }, this),
           msg.canRetry && /* @__PURE__ */ jsxDEV("button", { onClick: handleRetry, className: "mt-2 text-indigo-300 hover:text-indigo-200 text-sm", disabled: isAiThinking, children: [
             /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-arrows-rotate mr-1" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 351,
+              lineNumber: 501,
               columnNumber: 37
             }, this),
             " Try Again"
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 350,
+            lineNumber: 500,
             columnNumber: 33
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 336,
+          lineNumber: 485,
           columnNumber: 25
+        }, this),
+        msg.author === "user" && msg.isUser && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0", title: currentUser?.username, children: /* @__PURE__ */ jsxDEV("img", { src: `https://images.websim.com/avatar/${currentUser?.username}`, alt: currentUser?.username, className: "w-full h-full rounded-full" }, void 0, false, {
+          fileName: "<stdin>",
+          lineNumber: 507,
+          columnNumber: 33
+        }, this) }, void 0, false, {
+          fileName: "<stdin>",
+          lineNumber: 506,
+          columnNumber: 30
         }, this)
-      ] }, index, true, {
+      ] }, msg.id || index, true, {
         fileName: "<stdin>",
-        lineNumber: 334,
+        lineNumber: 478,
         columnNumber: 21
       }, this)),
       /* @__PURE__ */ jsxDEV("div", { ref: chatEndRef }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 357,
+        lineNumber: 512,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 332,
+      lineNumber: 476,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("footer", { className: "p-4 bg-gray-800 shadow-inner", children: /* @__PURE__ */ jsxDEV("form", { onSubmit: handleSendMessage, className: "flex gap-2 items-center", children: [
       /* @__PURE__ */ jsxDEV("div", { className: "relative", ref: voiceSelectorRef, children: [
         /* @__PURE__ */ jsxDEV(VoiceSelectorButton, { selectedVoice, onClick: () => setIsVoiceSelectorOpen((prev) => !prev) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 363,
+          lineNumber: 518,
           columnNumber: 25
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -448,14 +616,14 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 364,
+            lineNumber: 519,
             columnNumber: 25
           },
           this
         )
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 362,
+        lineNumber: 517,
         columnNumber: 21
       }, this),
       /* @__PURE__ */ jsxDEV(
@@ -466,63 +634,63 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           onChange: (e) => setUserInput(e.target.value),
           placeholder: isAiThinking ? "AI is thinking..." : "Teach the AI...",
           className: "flex-1 bg-gray-700 border border-gray-600 rounded-md p-2 focus-ring placeholder-gray-400",
-          disabled: isAiThinking || isUserSubmitting
+          disabled: isSubmitDisabled
         },
         void 0,
         false,
         {
           fileName: "<stdin>",
-          lineNumber: 371,
+          lineNumber: 526,
           columnNumber: 21
         },
         this
       ),
-      /* @__PURE__ */ jsxDEV("button", { type: "submit", className: "bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:cursor-not-allowed text-white font-bold p-2 rounded-md focus-ring w-12 h-10 flex items-center justify-center", disabled: isAiThinking || isUserSubmitting, children: isUserSubmitting ? /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin" }, void 0, false, {
+      /* @__PURE__ */ jsxDEV("button", { type: "submit", className: "bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:cursor-not-allowed text-white font-bold p-2 rounded-md focus-ring w-12 h-10 flex items-center justify-center", disabled: isSubmitDisabled, children: isUserSubmitting ? /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 380,
+        lineNumber: 535,
         columnNumber: 45
       }, this) : /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-paper-plane" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 380,
+        lineNumber: 535,
         columnNumber: 148
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 379,
+        lineNumber: 534,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 361,
+      lineNumber: 516,
       columnNumber: 17
     }, this) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 360,
+      lineNumber: 515,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed inset-0 bg-black bg-opacity-50 z-40 ${isSettingsOpen ? "block" : "hidden"}`, onClick: () => setIsSettingsOpen(false) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 386,
+      lineNumber: 541,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed bottom-0 left-0 right-0 bg-gray-800 p-6 rounded-t-2xl shadow-2xl z-50 settings-panel ${isSettingsOpen ? "open" : "closed"}`, children: [
       /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between items-center mb-4", children: [
         /* @__PURE__ */ jsxDEV("h2", { className: "text-lg font-semibold", children: "AI Settings" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 389,
+          lineNumber: 544,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("button", { onClick: () => setIsSettingsOpen(false), className: "p-2 rounded-md hover:bg-gray-700 focus-ring", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-times" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 391,
+          lineNumber: 546,
           columnNumber: 25
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 390,
+          lineNumber: 545,
           columnNumber: 21
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 388,
+        lineNumber: 543,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { children: [
@@ -530,17 +698,17 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           "Other users to learn from: ",
           /* @__PURE__ */ jsxDEV("span", { className: "font-bold text-indigo-400", children: aiDataSourceCount === 0 ? "Just Me" : aiDataSourceCount }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 396,
+            lineNumber: 551,
             columnNumber: 52
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 395,
+          lineNumber: 550,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mb-3", children: "Controls how many random users' chat snippets the AI can use." }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 398,
+          lineNumber: 553,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -558,30 +726,30 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 399,
+            lineNumber: 554,
             columnNumber: 21
           },
           this
         )
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 394,
+        lineNumber: 549,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 387,
+      lineNumber: 542,
       columnNumber: 13
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 324,
+    lineNumber: 451,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 415,
+  lineNumber: 570,
   columnNumber: 13
 }));

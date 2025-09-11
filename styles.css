@@ -70,3 +70,8 @@ body {
 .voice-selector-modal.open .voice-selector-content {
     transform: translateY(0);
 }
+
+/* Chat Mode Tabs */
+.chat-mode-tab {
+    transition: all 0.2s ease-in-out;
+}

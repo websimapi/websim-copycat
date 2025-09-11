@@ -59,3 +59,14 @@ body {
     }
 }
 
+/* Voice Selector Modal */
+.voice-selector-modal {
+    transition: opacity 0.3s ease-in-out;
+}
+.voice-selector-content {
+    transition: transform 0.3s ease-in-out;
+    transform: translateY(100%);
+}
+.voice-selector-modal.open .voice-selector-content {
+    transform: translateY(0);
+}

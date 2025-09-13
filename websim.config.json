@@ -41,5 +41,3 @@
     "instructions": "Each user has a single row in the 'chat_histories' table, identified by their user ID. The 'messages' column contains a JSON array of all chat snippets they've generated. The `realtime_chat_messages` table contains the shared history for the public chat room. To get a random set of snippets for the AI, you can query the 'chat_histories' table and sample rows."
   }
 }
-
-

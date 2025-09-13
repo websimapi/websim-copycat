@@ -192,15 +192,16 @@ function App() {
   const [lastFailedAttempt, setLastFailedAttempt] = useState(null);
   const [chatMode, setChatMode] = useState("personal");
   const [peers, setPeers] = useState({});
+  const [realtimeMessages, setRealtimeMessages] = useState([REALTIME_CHAT_GREETING]);
   const chatEndRef = useRef(null);
   const voiceSelectorRef = useRef(null);
-  const prevChatMode = useRef(chatMode);
   const { data: userHistoryData, loading: historyLoading } = useQuery(
     currentUser ? room.collection("chat_histories").filter({ id: currentUser.id }) : null
   );
   const userHistory = userHistoryData?.[0]?.messages || [];
   const { data: realtimeMessagesData } = useQuery(
-    chatMode === "realtime" ? room.query('SELECT id, author, username, text, audio_urls as "audioUrls", created_at FROM public.realtime_chat_messages ORDER BY created_at ASC') : null
+    // Pre-load realtime messages on component mount regardless of chat mode
+    room.query('SELECT id, author, username, text, audio_urls as "audioUrls", created_at FROM public.realtime_chat_messages ORDER BY created_at ASC')
   );
   useEffect(() => {
     const initialize = async () => {
@@ -224,23 +225,21 @@ function App() {
     initialize();
   }, []);
   useEffect(() => {
-    if (chatMode === "realtime") {
-      const formattedMessages = realtimeMessagesData ? realtimeMessagesData.map((msg) => ({ ...msg, isUser: msg.author === "user" && msg.username === currentUser?.username })) : [];
-      setMessages([REALTIME_CHAT_GREETING, ...formattedMessages]);
-    } else {
-      const userMessages = (userHistoryData?.[0]?.messages || []).map((msg) => ({ author: "user", text: msg.text, isUser: true }));
-      setMessages([PERSONAL_CHAT_GREETING, ...userMessages]);
+    if (realtimeMessagesData && currentUser) {
+      const formattedMessages = realtimeMessagesData.map((msg) => ({ ...msg, isUser: msg.author === "user" && msg.username === currentUser.username }));
+      setRealtimeMessages([REALTIME_CHAT_GREETING, ...formattedMessages]);
     }
-  }, [chatMode, realtimeMessagesData, userHistoryData, currentUser]);
+  }, [realtimeMessagesData, currentUser]);
   useEffect(() => {
-    const isChatModeSwitch = prevChatMode.current !== chatMode;
-    if (isChatModeSwitch) {
-      chatEndRef.current?.scrollIntoView({ behavior: "auto" });
-      prevChatMode.current = chatMode;
+    if (chatMode === "realtime") {
+      setMessages(realtimeMessages);
     } else {
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      setMessages([PERSONAL_CHAT_GREETING]);
     }
-  }, [messages, chatMode]);
+  }, [chatMode, realtimeMessages]);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [messages]);
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (voiceSelectorRef.current && !voiceSelectorRef.current.contains(event.target)) {
@@ -365,6 +364,7 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
   };
   const handlePostAudio = async (newSnippet) => {
     if (chatMode === "personal") {
+      setMessages((prev) => [...prev, { author: "user", text: newSnippet.text, isUser: true }]);
       const updatedMessages = [...userHistory, newSnippet];
       await room.collection("chat_histories").upsert({
         id: currentUser.id,
@@ -401,7 +401,7 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
         const msg = { author: "ai", text, audioUrls: [], canRetry };
         if (chatMode === "personal") {
           setMessages((prev) => prev.slice(0, -1).concat(msg));
-          if (canRetry) setLastFailedAttempt({ userMessageText, uniqueSnippets: allSnippets });
+          if (canRetry) setLastFailedAttempt({ userMessageText, uniqueSnippets: availableSnippets });
         } else {
           room.collection("realtime_chat_messages").create({
             author: "ai",

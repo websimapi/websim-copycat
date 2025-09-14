@@ -239,6 +239,8 @@ function App() {
   const [chatMode, setChatMode] = useState("personal");
   const [peers, setPeers] = useState({});
   const [realtimeMessages, setRealtimeMessages] = useState([REALTIME_CHAT_GREETING]);
+  const [allowPassthrough, setAllowPassthrough] = useState(false);
+  const [usePassthrough, setUsePassthrough] = useState(true);
   const chatEndRef = useRef(null);
   const voiceSelectorRef = useRef(null);
   const { data: userHistoryData, loading: historyLoading } = useQuery(
@@ -258,6 +260,7 @@ function App() {
       const unsubscribePresence = room.subscribePresence(() => {
         setPeers({ ...room.peers });
       });
+      const unsubscribePassthrough = room.subscribePresenceUpdateRequests(handlePassthroughRequest);
       room.onmessage = (event) => {
         const data = event.data;
         if (data.type === "play_audio_realtime" && Array.isArray(data.urls)) {
@@ -267,6 +270,7 @@ function App() {
       document.getElementById("root").style.opacity = "1";
       return () => {
         unsubscribePresence();
+        unsubscribePassthrough();
       };
     };
     initialize();
@@ -306,6 +310,56 @@ function App() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isVoiceSelectorOpen]);
+  const handleToggleAllowPassthrough = () => {
+    const newValue = !allowPassthrough;
+    setAllowPassthrough(newValue);
+    room.updatePresence({ isPassthroughHost: newValue });
+  };
+  const handlePassthroughRequest = async (updateRequest, fromClientId) => {
+    if (updateRequest.type === "passthrough_request") {
+      const { userMessageText, availableSnippets, chatHistory } = updateRequest;
+      const fromUsername = room.peers[fromClientId]?.username || "another user";
+      try {
+        await room.collection("realtime_chat_messages").create({
+          author: "system",
+          text: `AI request for ${fromUsername} is being processed...`,
+          audio_urls: []
+        });
+        const result = await getAiSelectionFromSnippets({
+          userMessage: userMessageText,
+          availableSnippets,
+          chatHistory,
+          attempt: 1,
+          isPassthrough: true
+        });
+        if (result.success && result.selectedIds.length > 0) {
+          const selectedSnippets = result.selectedIds.map((id) => availableSnippets[id]).filter(Boolean);
+          const aiResponseText = selectedSnippets.map((s) => s.text).join(" ");
+          const aiAudioUrls = selectedSnippets.map((s) => s.audioUrl);
+          playAudioQueue(aiAudioUrls);
+          room.send({ type: "play_audio_realtime", urls: aiAudioUrls, echo: true });
+          await room.collection("realtime_chat_messages").create({
+            author: "ai",
+            text: aiResponseText,
+            audio_urls: aiAudioUrls
+          });
+        } else {
+          await room.collection("realtime_chat_messages").create({
+            author: "system",
+            text: `AI failed to generate a passthrough response for ${fromUsername}.`,
+            audio_urls: []
+          });
+        }
+      } catch (e) {
+        console.error("Passthrough request failed:", e);
+        await room.collection("realtime_chat_messages").create({
+          author: "system",
+          text: `An error occurred processing a passthrough request for ${fromUsername}.`,
+          audio_urls: []
+        });
+      }
+    }
+  };
   const handleRetry = async () => {
     if (!lastFailedAttempt || isAiThinking) return;
     const { userMessageText, uniqueSnippets } = lastFailedAttempt;
@@ -437,6 +491,46 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
     setIsUserSubmitting(false);
     triggerAiResponse(newSnippet.text);
   };
+  const getAiSelectionFromSnippets = async ({ userMessage, availableSnippets, chatHistory = "", attempt = 1, isPassthrough = false }) => {
+    const MAX_LLM_RETRIES = 3;
+    for (let i = 0; i < MAX_LLM_RETRIES; i++) {
+      try {
+        const systemPrompt = attempt > 1 || isPassthrough ? `You are an AI. A previous attempt to respond failed or was rerouted. Please try to form a response.
+- You MUST respond with a JSON object.
+- The JSON object must have a key called 'selected_ids'.
+- 'selected_ids' must be an array of numbers.
+- Example of a valid response: {"selected_ids": [12, 5, 23]}
+- Your goal is to form a coherent and relevant response to the user's message by selecting snippets, considering the chat history.` : `You are an AI that can only communicate by selecting and combining pre-existing text snippets from a provided list. Your goal is to form a coherent and relevant response to the user's message.
+- Consider the provided chat history for context.
+- Combine multiple snippets if it improves the response.
+- Respond ONLY with a JSON object containing a 'selected_ids' key (an array of snippet IDs). If you can't find anything, return an empty array.`;
+        const userContent = (chatHistory ? `Recent Chat History:
+${chatHistory}
+
+` : "") + `User message: "${userMessage}"
+
+Available snippets:
+${availableSnippets.map((s, i2) => `${i2}: "${sanitizeForAI(s.text)}"`).join("\n")}`;
+        const completion = await websim.chat.completions.create({
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent }
+          ],
+          json: true
+        });
+        const result = JSON.parse(completion.content);
+        const selectedIds = result.selected_ids || [];
+        return { success: true, selectedIds };
+      } catch (error) {
+        console.error(`getAiSelection attempt ${i + 1} failed:`, error);
+        if (i === MAX_LLM_RETRIES - 1) {
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200 * (i + 1)));
+      }
+    }
+    return { success: false, selectedIds: [] };
+  };
   const triggerAiResponse = async (userMessageText, attempt = 1) => {
     const MAX_ATTEMPTS = 5;
     const RETRY_DELAY_MS = 3e3;
@@ -444,6 +538,7 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
       setIsAiThinking(true);
       if (chatMode === "personal") {
         setMessages((prev) => [...prev, { author: "ai", text: "...", isTyping: true, isRetrying: false }]);
+      } else {
       }
       setLastFailedAttempt(null);
     }
@@ -478,23 +573,19 @@ ${uniqueSnippets.map((s, i) => `${i}: "${s.text}"`).join("\n")}` }
       const uniqueSnippets = [...new Map(allSnippets.map((item) => [item.audioUrl, item])).values()];
       const shuffledSnippets = uniqueSnippets.sort(() => 0.5 - Math.random());
       const availableSnippets = shuffledSnippets.slice(0, 400);
-      const getAiSelection = async (systemPrompt, retries = 3) => {
+      let chatHistory = "";
+      if (chatMode === "realtime") {
+        chatHistory = realtimeMessages.slice(-6, -1).map((msg) => `${msg.isUser ? msg.username || "User" : "AI"}: ${msg.text}`).join("\n");
+      }
+      const getAiSelection = async (retries = 3) => {
         for (let i = 0; i < retries; i++) {
           try {
-            const completion = await websim.chat.completions.create({
-              messages: [
-                { role: "system", content: systemPrompt },
-                {
-                  role: "user",
-                  content: `User message: "${sanitizedUserMessage}"
-
-Available snippets:
-${availableSnippets.map((s, i2) => `${i2}: "${sanitizeForAI(s.text)}"`).join("\n")}`
-                }
-              ],
-              json: true
+            return await getAiSelectionFromSnippets({
+              userMessage: sanitizedUserMessage,
+              availableSnippets,
+              chatHistory,
+              attempt
             });
-            return JSON.parse(completion.content);
           } catch (error) {
             console.error(`getAiSelection attempt ${i + 1} failed:`, error);
             if (i === retries - 1) {
@@ -504,18 +595,8 @@ ${availableSnippets.map((s, i2) => `${i2}: "${sanitizeForAI(s.text)}"`).join("\n
           }
         }
       };
-      const initialPrompt = attempt > 1 ? `You are an AI. Your previous attempt to respond failed because you provided an invalid format. Please try again.
-- You MUST respond with a JSON object.
-- The JSON object must have a key called 'selected_ids'.
-- 'selected_ids' must be an array of numbers.
-- Example of a valid response: {"selected_ids": [12, 5, 23]}
-- Your goal is to form a coherent and relevant response to the user's message by selecting snippets.` : `You are an AI that can only communicate by selecting and combining pre-existing text snippets from a provided list. Your goal is to form a coherent and relevant response to the user's message.
-- Combine multiple snippets if it improves the response. A good response can use any number of snippets to form a complete thought.
-- Only use a single snippet if it's a perfect and complete response on its own.
-- Feel free to use more snippets if you think it will make your response more detailed, nuanced, or accurate. There is no hard limit on the number of snippets you can use.
-- Respond ONLY with a JSON object containing a 'selected_ids' key (an array of snippet IDs). If you can't find anything, return an empty array.`;
-      let result = await getAiSelection(initialPrompt);
-      let selectedIds = result.selected_ids || [];
+      let result = await getAiSelection();
+      let selectedIds = result.selectedIds || [];
       let selectedSnippets = selectedIds.map((id) => availableSnippets[id]).filter(Boolean);
       let aiResponseText = selectedSnippets.map((s) => s.text).join(" ");
       if (selectedIds.length > 0 && aiResponseText.trim().toLowerCase() === userMessageText.trim().toLowerCase()) {
@@ -523,8 +604,14 @@ ${availableSnippets.map((s, i2) => `${i2}: "${sanitizeForAI(s.text)}"`).join("\n
 Try again. Be more creative. You MUST combine different snippets to form a new phrase that responds to the user's original message.
 Do NOT simply repeat what the user said. Find a better, more thoughtful combination.
 Respond ONLY with a JSON object containing a 'selected_ids' key (an array of snippet IDs). If you still can't find anything, return an empty array.`;
-        result = await getAiSelection(retryPrompt);
-        selectedIds = result.selected_ids || [];
+        const retryResult = await getAiSelectionFromSnippets({
+          userMessage: sanitizedUserMessage,
+          availableSnippets,
+          chatHistory,
+          attempt: 2
+          // Signal it's a retry
+        });
+        selectedIds = retryResult.selectedIds || [];
         selectedSnippets = selectedIds.map((id) => availableSnippets[id]).filter(Boolean);
         aiResponseText = selectedSnippets.map((s) => s.text).join(" ");
       }
@@ -575,6 +662,35 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
         triggerAiResponse(userMessageText, attempt + 1);
       } else {
         console.error("AI failed to respond after multiple attempts.");
+        if (chatMode === "realtime" && usePassthrough) {
+          const hosts = Object.entries(room.presence).filter(([id, pres]) => pres?.isPassthroughHost && id !== room.clientId);
+          if (hosts.length > 0) {
+            const randomHost = hosts[Math.floor(Math.random() * hosts.length)];
+            const hostId = randomHost[0];
+            const otherUsersData = await room.query("SELECT messages FROM public.chat_histories WHERE id != $1 ORDER BY random() LIMIT $2", [currentUser.id, aiDataSourceCount]);
+            const otherSnippets = otherUsersData.flatMap((row) => row.messages || []);
+            const realtimeChatData = await room.query("SELECT text, audio_urls FROM public.realtime_chat_messages WHERE author = 'user' ORDER BY created_at DESC LIMIT 100");
+            const realtimeSnippets = realtimeChatData.flatMap((msg) => (msg.audio_urls || []).map((audioUrl) => ({ text: msg.text, audioUrl }))).filter((snippet) => snippet.audioUrl);
+            const userSnippets = userHistoryData?.[0]?.messages || [];
+            const allSnippets = [...userSnippets, ...otherSnippets, ...realtimeSnippets];
+            const uniqueSnippets = [...new Map(allSnippets.map((item) => [item.audioUrl, item])).values()];
+            const availableSnippets = uniqueSnippets.sort(() => 0.5 - Math.random()).slice(0, 400);
+            const chatHistory = realtimeMessages.slice(-6, -1).map((msg) => `${msg.isUser ? msg.username || "User" : "AI"}: ${msg.text}`).join("\n");
+            room.requestPresenceUpdate(hostId, {
+              type: "passthrough_request",
+              userMessageText,
+              availableSnippets,
+              chatHistory
+            });
+            await room.collection("realtime_chat_messages").create({
+              author: "system",
+              text: `Request failed. Passing to ${room.peers[hostId]?.username || "another user"}...`,
+              audio_urls: []
+            });
+            setIsAiThinking(false);
+            return;
+          }
+        }
         const errorMessage = "The AI failed to respond after multiple attempts. Please try again later.";
         const systemMessage = { author: "system", text: errorMessage };
         if (chatMode === "personal") {
@@ -595,21 +711,21 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
     /* @__PURE__ */ jsxDEV("header", { className: "bg-gray-800 p-4 shadow-md z-10 flex justify-between items-center", children: [
       /* @__PURE__ */ jsxDEV("h1", { className: "text-xl font-bold text-indigo-400", children: "Copycat?" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 608,
+        lineNumber: 749,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("button", { onClick: () => setIsSettingsOpen(true), className: "p-2 rounded-md hover:bg-gray-700 focus-ring", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-cog" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 610,
+        lineNumber: 751,
         columnNumber: 21
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 609,
+        lineNumber: 750,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 607,
+      lineNumber: 748,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: "bg-gray-800", children: [
@@ -625,7 +741,7 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 617,
+            lineNumber: 758,
             columnNumber: 25
           },
           this
@@ -641,143 +757,143 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 623,
+            lineNumber: 764,
             columnNumber: 25
           },
           this
         )
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 616,
+        lineNumber: 757,
         columnNumber: 21
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 615,
+        lineNumber: 756,
         columnNumber: 17
       }, this),
       chatMode === "realtime" && /* @__PURE__ */ jsxDEV(RealtimeUsersHeader, { peers }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 631,
+        lineNumber: 772,
         columnNumber: 45
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 614,
+      lineNumber: 755,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("main", { className: "flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900", children: [
       messages.map((msg, index) => /* @__PURE__ */ jsxDEV("div", { className: `flex items-end gap-2 chat-bubble ${msg.isUser ? "justify-end" : "justify-start"}`, children: [
         msg.author === "ai" && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-robot" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 637,
+          lineNumber: 778,
           columnNumber: 148
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 637,
+          lineNumber: 778,
           columnNumber: 49
         }, this),
         chatMode === "realtime" && msg.author === "user" && !msg.isUser && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0", title: msg.username, children: /* @__PURE__ */ jsxDEV("img", { src: `https://images.websim.com/avatar/${msg.username}`, alt: msg.username, className: "w-full h-full rounded-full" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 640,
+          lineNumber: 781,
           columnNumber: 33
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 639,
+          lineNumber: 780,
           columnNumber: 29
         }, this),
         /* @__PURE__ */ jsxDEV("div", { className: `max-w-[80%] md:max-w-md p-3 rounded-lg break-words ${msg.isUser ? "bg-blue-600 rounded-br-none" : "bg-gray-700 rounded-bl-none"} ${msg.author === "system" ? "bg-red-600" : ""}`, children: [
           chatMode === "realtime" && msg.author === "user" && !msg.isUser && /* @__PURE__ */ jsxDEV("div", { className: "text-xs font-bold text-indigo-300 mb-1", children: msg.username }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 644,
+            lineNumber: 785,
             columnNumber: 97
           }, this),
           msg.isTyping ? /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center space-x-1", children: [
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-0" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 647,
+              lineNumber: 788,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 648,
+              lineNumber: 789,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 649,
+              lineNumber: 790,
               columnNumber: 37
             }, this)
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 646,
+            lineNumber: 787,
             columnNumber: 33
           }, this) : msg.isRetrying ? /* @__PURE__ */ jsxDEV("div", { className: "text-sm text-yellow-300 italic", children: msg.text }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 652,
+            lineNumber: 793,
             columnNumber: 33
           }, this) : /* @__PURE__ */ jsxDEV(ChatMessageContent, { text: msg.text }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 653,
+            lineNumber: 794,
             columnNumber: 33
           }, this),
           msg.author === "ai" && msg.audioUrls && msg.audioUrls.length > 0 && /* @__PURE__ */ jsxDEV("button", { onClick: () => playAudioQueue(msg.audioUrls), className: "mt-2 text-indigo-300 hover:text-indigo-200 text-sm", children: [
             /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-play-circle mr-1" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 656,
+              lineNumber: 797,
               columnNumber: 37
             }, this),
             " Replay"
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 655,
+            lineNumber: 796,
             columnNumber: 33
           }, this),
           msg.canRetry && /* @__PURE__ */ jsxDEV("button", { onClick: handleRetry, className: "mt-2 text-indigo-300 hover:text-indigo-200 text-sm", disabled: isAiThinking, children: [
             /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-arrows-rotate mr-1" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 661,
+              lineNumber: 802,
               columnNumber: 37
             }, this),
             " Try Again"
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 660,
+            lineNumber: 801,
             columnNumber: 33
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 643,
+          lineNumber: 784,
           columnNumber: 25
         }, this),
         chatMode === "realtime" && msg.author === "user" && msg.isUser && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0", title: currentUser?.username, children: /* @__PURE__ */ jsxDEV("img", { src: `https://images.websim.com/avatar/${currentUser?.username}`, alt: currentUser?.username, className: "w-full h-full rounded-full" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 667,
+          lineNumber: 808,
           columnNumber: 33
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 666,
+          lineNumber: 807,
           columnNumber: 30
         }, this)
       ] }, msg.id || index, true, {
         fileName: "<stdin>",
-        lineNumber: 636,
+        lineNumber: 777,
         columnNumber: 21
       }, this)),
       /* @__PURE__ */ jsxDEV("div", { ref: chatEndRef }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 672,
+        lineNumber: 813,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 634,
+      lineNumber: 775,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("footer", { className: "p-4 bg-gray-800 shadow-inner", children: /* @__PURE__ */ jsxDEV("form", { onSubmit: handleSendMessage, className: "flex gap-2 items-center", children: [
       /* @__PURE__ */ jsxDEV("div", { className: "relative", ref: voiceSelectorRef, children: [
         /* @__PURE__ */ jsxDEV(VoiceSelectorButton, { selectedVoice, onClick: () => setIsVoiceSelectorOpen((prev) => !prev) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 678,
+          lineNumber: 819,
           columnNumber: 25
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -792,14 +908,14 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 679,
+            lineNumber: 820,
             columnNumber: 25
           },
           this
         )
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 677,
+        lineNumber: 818,
         columnNumber: 21
       }, this),
       /* @__PURE__ */ jsxDEV(
@@ -816,116 +932,209 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
         false,
         {
           fileName: "<stdin>",
-          lineNumber: 686,
+          lineNumber: 827,
           columnNumber: 21
         },
         this
       ),
       /* @__PURE__ */ jsxDEV("button", { type: "submit", className: "bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:cursor-not-allowed text-white font-bold p-2 rounded-md focus-ring w-12 h-10 flex items-center justify-center", disabled: isSubmitDisabled, children: isUserSubmitting ? /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 695,
+        lineNumber: 836,
         columnNumber: 45
       }, this) : /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-paper-plane" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 695,
+        lineNumber: 836,
         columnNumber: 148
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 694,
+        lineNumber: 835,
         columnNumber: 21
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 676,
+      lineNumber: 817,
       columnNumber: 17
     }, this) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 675,
+      lineNumber: 816,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed inset-0 bg-black bg-opacity-50 z-40 ${isSettingsOpen ? "block" : "hidden"}`, onClick: () => setIsSettingsOpen(false) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 701,
+      lineNumber: 842,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed bottom-0 left-0 right-0 bg-gray-800 p-6 rounded-t-2xl shadow-2xl z-50 settings-panel ${isSettingsOpen ? "open" : "closed"}`, children: [
       /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between items-center mb-4", children: [
         /* @__PURE__ */ jsxDEV("h2", { className: "text-lg font-semibold", children: "AI Settings" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 704,
+          lineNumber: 845,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("button", { onClick: () => setIsSettingsOpen(false), className: "p-2 rounded-md hover:bg-gray-700 focus-ring", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-times" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 706,
+          lineNumber: 847,
           columnNumber: 25
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 705,
+          lineNumber: 846,
           columnNumber: 21
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 703,
+        lineNumber: 844,
         columnNumber: 17
       }, this),
-      /* @__PURE__ */ jsxDEV("div", { children: [
-        /* @__PURE__ */ jsxDEV("label", { htmlFor: "aiDataSource", className: "block mb-2 text-sm font-medium text-gray-300", children: [
-          "Other users to learn from: ",
-          /* @__PURE__ */ jsxDEV("span", { className: "font-bold text-indigo-400", children: aiDataSourceCount === 0 ? "Just Me" : aiDataSourceCount }, void 0, false, {
+      /* @__PURE__ */ jsxDEV("div", { className: "space-y-6", children: [
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV("label", { htmlFor: "aiDataSource", className: "block mb-2 text-sm font-medium text-gray-300", children: [
+            "Other users to learn from: ",
+            /* @__PURE__ */ jsxDEV("span", { className: "font-bold text-indigo-400", children: aiDataSourceCount === 0 ? "Just Me" : aiDataSourceCount }, void 0, false, {
+              fileName: "<stdin>",
+              lineNumber: 853,
+              columnNumber: 56
+            }, this)
+          ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 711,
-            columnNumber: 52
+            lineNumber: 852,
+            columnNumber: 25
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mb-3", children: "Controls how many random users' chat snippets the AI can use." }, void 0, false, {
+            fileName: "<stdin>",
+            lineNumber: 855,
+            columnNumber: 25
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "input",
+            {
+              id: "aiDataSource",
+              type: "range",
+              min: "0",
+              max: "50",
+              value: aiDataSourceCount,
+              onChange: (e) => setAiDataSourceCount(Number(e.target.value)),
+              className: "w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+            },
+            void 0,
+            false,
+            {
+              fileName: "<stdin>",
+              lineNumber: 856,
+              columnNumber: 25
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "<stdin>",
+          lineNumber: 851,
+          columnNumber: 21
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "border-t border-gray-700 pt-6", children: [
+          /* @__PURE__ */ jsxDEV("h3", { className: "text-md font-semibold mb-3", children: "Passthrough Network" }, void 0, false, {
+            fileName: "<stdin>",
+            lineNumber: 867,
+            columnNumber: 26
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between", children: [
+            /* @__PURE__ */ jsxDEV("div", { children: [
+              /* @__PURE__ */ jsxDEV("label", { htmlFor: "usePassthrough", className: "font-medium text-gray-300", children: "Use Passthrough on Failure" }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 870,
+                columnNumber: 33
+              }, this),
+              /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mt-1", children: "If your AI request fails, send it to another user to process." }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 871,
+                columnNumber: 33
+              }, this)
+            ] }, void 0, true, {
+              fileName: "<stdin>",
+              lineNumber: 869,
+              columnNumber: 29
+            }, this),
+            /* @__PURE__ */ jsxDEV("label", { className: "toggle-switch", children: [
+              /* @__PURE__ */ jsxDEV("input", { id: "usePassthrough", type: "checkbox", checked: usePassthrough, onChange: () => setUsePassthrough((prev) => !prev) }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 874,
+                columnNumber: 33
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { className: "toggle-slider" }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 875,
+                columnNumber: 33
+              }, this)
+            ] }, void 0, true, {
+              fileName: "<stdin>",
+              lineNumber: 873,
+              columnNumber: 29
+            }, this)
+          ] }, void 0, true, {
+            fileName: "<stdin>",
+            lineNumber: 868,
+            columnNumber: 26
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between mt-4", children: [
+            /* @__PURE__ */ jsxDEV("div", { children: [
+              /* @__PURE__ */ jsxDEV("label", { htmlFor: "allowPassthrough", className: "font-medium text-gray-300", children: "Process Others' Requests" }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 880,
+                columnNumber: 33
+              }, this),
+              /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mt-1", children: "Help others by processing their failed AI requests." }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 881,
+                columnNumber: 33
+              }, this)
+            ] }, void 0, true, {
+              fileName: "<stdin>",
+              lineNumber: 879,
+              columnNumber: 29
+            }, this),
+            /* @__PURE__ */ jsxDEV("label", { className: "toggle-switch", children: [
+              /* @__PURE__ */ jsxDEV("input", { id: "allowPassthrough", type: "checkbox", checked: allowPassthrough, onChange: handleToggleAllowPassthrough }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 884,
+                columnNumber: 33
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { className: "toggle-slider" }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 885,
+                columnNumber: 33
+              }, this)
+            ] }, void 0, true, {
+              fileName: "<stdin>",
+              lineNumber: 883,
+              columnNumber: 30
+            }, this)
+          ] }, void 0, true, {
+            fileName: "<stdin>",
+            lineNumber: 878,
+            columnNumber: 26
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 710,
+          lineNumber: 866,
           columnNumber: 21
-        }, this),
-        /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mb-3", children: "Controls how many random users' chat snippets the AI can use." }, void 0, false, {
-          fileName: "<stdin>",
-          lineNumber: 713,
-          columnNumber: 21
-        }, this),
-        /* @__PURE__ */ jsxDEV(
-          "input",
-          {
-            id: "aiDataSource",
-            type: "range",
-            min: "0",
-            max: "50",
-            value: aiDataSourceCount,
-            onChange: (e) => setAiDataSourceCount(Number(e.target.value)),
-            className: "w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-          },
-          void 0,
-          false,
-          {
-            fileName: "<stdin>",
-            lineNumber: 714,
-            columnNumber: 21
-          },
-          this
-        )
+        }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 709,
+        lineNumber: 850,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 702,
+      lineNumber: 843,
       columnNumber: 13
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 606,
+    lineNumber: 747,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 730,
+  lineNumber: 896,
   columnNumber: 13
 }));

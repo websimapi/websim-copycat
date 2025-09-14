@@ -125,3 +125,16 @@ input:checked + .toggle-slider {
 input:checked + .toggle-slider:before {
     transform: translateX(20px);
 }
+
+.glow-animation {
+    animation: glow 1.5s infinite alternate;
+}
+
+@keyframes glow {
+    from {
+        box-shadow: 0 0 3px #4f46e5, 0 0 6px #4f46e5, 0 0 9px #4f46e5;
+    }
+    to {
+        box-shadow: 0 0 6px #6366f1, 0 0 12px #6366f1, 0 0 18px #6366f1;
+    }
+}

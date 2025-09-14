@@ -52,6 +52,10 @@ body {
     animation: slide-in 0.3s forwards;
 }
 
+.chat-bubble > div:last-child {
+    max-width: calc(100% - 2.5rem); /* 40px avatar + 8px gap */
+}
+
 @keyframes slide-in {
     to {
         opacity: 1;

@@ -262,6 +262,7 @@ function App() {
   const currentQueueRef = useRef([]);
   const currentQueueIndexRef = useRef(0);
   const fileInputRef = useRef(null);
+  const tempMessageIdRef = useRef(null);
   const chatEndRef = useRef(null);
   const voiceSelectorRef = useRef(null);
   const { data: userHistoryData, loading: historyLoading } = useQuery(
@@ -536,6 +537,16 @@ ${uniqueSnippets.map((s, i) => `${i}: "${sanitizeForAI(s.text)}"`).join("\n")}` 
       fileInputRef.current.value = null;
     }
   };
+  const withRetry = async (fn, retries = 3, delay = 500) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await fn();
+      } catch (error) {
+        if (i === retries - 1) throw error;
+        await new Promise((res) => setTimeout(res, delay * (i + 1)));
+      }
+    }
+  };
   const handleSendMessage = async (e) => {
     e.preventDefault();
     const hasText = userInput.trim();
@@ -552,11 +563,11 @@ ${uniqueSnippets.map((s, i) => `${i}: "${sanitizeForAI(s.text)}"`).join("\n")}` 
     setUserInput("");
     let imageUrl = null;
     let imageDescription = null;
+    tempMessageIdRef.current = `temp-msg-${Date.now()}`;
     try {
       if (hasImage) {
-        const tempId = `temp-img-${Date.now()}`;
         const tempMessage = {
-          id: tempId,
+          id: tempMessageIdRef.current,
           author: "user",
           isUser: true,
           text: userMessageText,
@@ -566,7 +577,7 @@ ${uniqueSnippets.map((s, i) => `${i}: "${sanitizeForAI(s.text)}"`).join("\n")}` 
         if (chatMode === "personal") {
           setMessages((prev) => [...prev, tempMessage]);
         }
-        imageUrl = await websim.upload(selectedImage);
+        imageUrl = await withRetry(() => websim.upload(selectedImage));
         const descriptionCompletion = await websim.chat.completions.create({
           messages: [{
             role: "user",
@@ -579,8 +590,9 @@ ${uniqueSnippets.map((s, i) => `${i}: "${sanitizeForAI(s.text)}"`).join("\n")}` 
         imageDescription = descriptionCompletion.content;
         handleRemoveImage();
         if (chatMode === "personal") {
-          setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, isProcessing: false } : m));
+          setMessages((prev) => prev.map((m) => m.id === tempMessageIdRef.current ? { ...m, isProcessing: false } : m));
         }
+        tempMessageIdRef.current = null;
       }
       let audioUrl = null;
       if (hasText) {
@@ -609,10 +621,20 @@ ${uniqueSnippets.map((s, i) => `${i}: "${sanitizeForAI(s.text)}"`).join("\n")}` 
       }
     } catch (error) {
       console.error("Error sending message:", error);
+      let userErrorMessage = "Error processing your message. Please try again.";
+      if (error.message && error.message.toLowerCase().includes("upload")) {
+        userErrorMessage = "Error uploading image. This could be due to a network issue, file size, or permissions. Please try again.";
+      } else if (error.message) {
+        userErrorMessage = `An error occurred: ${error.message}. Please try again.`;
+      }
       setIsUserSubmitting(false);
       setUserInput(userMessageText);
-      if (imagePreviewUrl) setImagePreviewUrl(imagePreviewUrl);
-      setMessages((prev) => [...prev, { author: "system", text: "Error processing your message. Please try again." }]);
+      handleRemoveImage();
+      if (tempMessageIdRef.current) {
+        setMessages((prev) => prev.filter((m) => m.id !== tempMessageIdRef.current));
+        tempMessageIdRef.current = null;
+      }
+      setMessages((prev) => [...prev, { id: `err-${Date.now()}`, author: "system", text: userErrorMessage }]);
     }
   };
   const handlePostAudio = async (newSnippet) => {
@@ -631,7 +653,7 @@ ${uniqueSnippets.map((s, i) => `${i}: "${sanitizeForAI(s.text)}"`).join("\n")}` 
           };
           return newMessages;
         });
-      } else {
+      } else if (newSnippet.text || newSnippet.imageUrl) {
         setMessages((prev) => [...prev, { author: "user", text: newSnippet.text, imageUrl: newSnippet.imageUrl, isUser: true }]);
       }
       const updatedMessages = [...userHistory, newSnippet];
@@ -935,21 +957,21 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
     /* @__PURE__ */ jsxDEV("header", { className: "bg-gray-800 p-4 shadow-md z-10 flex justify-between items-center", children: [
       /* @__PURE__ */ jsxDEV("h1", { className: "text-xl font-bold text-indigo-400", children: "Copycat?" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 1028,
+        lineNumber: 1060,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("button", { onClick: handleOpenSettings, className: `p-2 rounded-md hover:bg-gray-700 focus-ring ${!hasClickedSettings ? "glow-animation" : ""}`, children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-cog" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 1030,
+        lineNumber: 1062,
         columnNumber: 21
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 1029,
+        lineNumber: 1061,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 1027,
+      lineNumber: 1059,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: "bg-gray-800", children: [
@@ -965,7 +987,7 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 1037,
+            lineNumber: 1069,
             columnNumber: 25
           },
           this
@@ -981,100 +1003,100 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 1043,
+            lineNumber: 1075,
             columnNumber: 25
           },
           this
         )
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 1036,
+        lineNumber: 1068,
         columnNumber: 21
       }, this) }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 1035,
+        lineNumber: 1067,
         columnNumber: 17
       }, this),
       chatMode === "realtime" && /* @__PURE__ */ jsxDEV(RealtimeUsersHeader, { peers }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 1051,
+        lineNumber: 1083,
         columnNumber: 45
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 1034,
+      lineNumber: 1066,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("main", { className: "flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900", children: [
       messages.map((msg, index) => /* @__PURE__ */ jsxDEV("div", { className: `flex items-end gap-2 chat-bubble ${msg.isUser ? "justify-end" : "justify-start"}`, children: [
         msg.author === "ai" && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-robot" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1057,
+          lineNumber: 1089,
           columnNumber: 148
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1057,
+          lineNumber: 1089,
           columnNumber: 49
         }, this),
         chatMode === "realtime" && msg.author === "user" && !msg.isUser && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0", title: msg.username, children: /* @__PURE__ */ jsxDEV("img", { src: `https://images.websim.com/avatar/${msg.username}`, alt: msg.username, className: "w-full h-full rounded-full" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1060,
+          lineNumber: 1092,
           columnNumber: 33
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1059,
+          lineNumber: 1091,
           columnNumber: 29
         }, this),
         /* @__PURE__ */ jsxDEV("div", { className: `max-w-[80%] md:max-w-md p-3 rounded-lg break-words ${msg.isUser ? "bg-blue-600 rounded-br-none" : "bg-gray-700 rounded-bl-none"} ${msg.author === "system" ? "bg-red-600" : ""}`, children: [
           chatMode === "realtime" && msg.author === "user" && !msg.isUser && /* @__PURE__ */ jsxDEV("div", { className: "text-xs font-bold text-indigo-300 mb-1", children: msg.username }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 1064,
+            lineNumber: 1096,
             columnNumber: 97
           }, this),
           msg.isTyping ? /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-center space-x-1", children: [
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-0" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 1067,
+              lineNumber: 1099,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-150" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 1068,
+              lineNumber: 1100,
               columnNumber: 37
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-300" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 1069,
+              lineNumber: 1101,
               columnNumber: 37
             }, this)
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 1066,
+            lineNumber: 1098,
             columnNumber: 33
           }, this) : msg.isRetrying ? /* @__PURE__ */ jsxDEV("div", { className: "text-sm text-yellow-300 italic", children: msg.text }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 1072,
+            lineNumber: 1104,
             columnNumber: 33
           }, this) : msg.isProcessing ? /* @__PURE__ */ jsxDEV("div", { children: [
             msg.imageUrl && /* @__PURE__ */ jsxDEV("img", { src: msg.imageUrl, alt: "Uploading...", className: "rounded-lg mb-2 max-w-full h-auto max-h-64 opacity-50" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 1075,
+              lineNumber: 1107,
               columnNumber: 54
             }, this),
             /* @__PURE__ */ jsxDEV("div", { className: "flex items-center gap-2 text-sm text-gray-300", children: [
               /* @__PURE__ */ jsxDEV("div", { className: "w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin" }, void 0, false, {
                 fileName: "<stdin>",
-                lineNumber: 1077,
+                lineNumber: 1109,
                 columnNumber: 41
               }, this),
               /* @__PURE__ */ jsxDEV("span", { children: "Processing image..." }, void 0, false, {
                 fileName: "<stdin>",
-                lineNumber: 1078,
+                lineNumber: 1110,
                 columnNumber: 41
               }, this)
             ] }, void 0, true, {
               fileName: "<stdin>",
-              lineNumber: 1076,
+              lineNumber: 1108,
               columnNumber: 37
             }, this),
             msg.text && /* @__PURE__ */ jsxDEV("p", { className: "mt-1 italic text-gray-400", children: [
@@ -1083,16 +1105,16 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
               '"'
             ] }, void 0, true, {
               fileName: "<stdin>",
-              lineNumber: 1080,
+              lineNumber: 1112,
               columnNumber: 50
             }, this)
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 1074,
+            lineNumber: 1106,
             columnNumber: 33
           }, this) : /* @__PURE__ */ jsxDEV(ChatMessageContent, { text: msg.text, imageUrl: msg.imageUrl }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 1082,
+            lineNumber: 1114,
             columnNumber: 33
           }, this),
           msg.author === "ai" && msg.audioUrls && msg.audioUrls.length > 0 && /* @__PURE__ */ jsxDEV("div", { className: "mt-2 flex items-center gap-4", children: /* @__PURE__ */ jsxDEV(
@@ -1103,24 +1125,24 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
               children: nowPlayingInfo.key === (msg.id || index) && nowPlayingInfo.isPlaying ? /* @__PURE__ */ jsxDEV(Fragment, { children: [
                 /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-pause-circle" }, void 0, false, {
                   fileName: "<stdin>",
-                  lineNumber: 1091,
+                  lineNumber: 1123,
                   columnNumber: 49
                 }, this),
                 " Pause"
               ] }, void 0, true, {
                 fileName: "<stdin>",
-                lineNumber: 1090,
+                lineNumber: 1122,
                 columnNumber: 45
               }, this) : /* @__PURE__ */ jsxDEV(Fragment, { children: [
                 /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-play-circle" }, void 0, false, {
                   fileName: "<stdin>",
-                  lineNumber: 1095,
+                  lineNumber: 1127,
                   columnNumber: 49
                 }, this),
                 nowPlayingInfo.key === (msg.id || index) && !nowPlayingInfo.isPlaying ? "Resume" : "Play"
               ] }, void 0, true, {
                 fileName: "<stdin>",
-                lineNumber: 1094,
+                lineNumber: 1126,
                 columnNumber: 45
               }, this)
             },
@@ -1128,61 +1150,61 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
             false,
             {
               fileName: "<stdin>",
-              lineNumber: 1085,
+              lineNumber: 1117,
               columnNumber: 37
             },
             this
           ) }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 1084,
+            lineNumber: 1116,
             columnNumber: 33
           }, this),
           msg.canRetry && /* @__PURE__ */ jsxDEV("button", { onClick: handleRetry, className: "mt-2 text-indigo-300 hover:text-indigo-200 text-sm", disabled: isAiThinking, children: [
             /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-arrows-rotate mr-1" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 1104,
+              lineNumber: 1136,
               columnNumber: 37
             }, this),
             " Try Again"
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 1103,
+            lineNumber: 1135,
             columnNumber: 33
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 1063,
+          lineNumber: 1095,
           columnNumber: 25
         }, this),
         chatMode === "realtime" && msg.author === "user" && msg.isUser && /* @__PURE__ */ jsxDEV("div", { className: "w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center flex-shrink-0", title: currentUser?.username, children: /* @__PURE__ */ jsxDEV("img", { src: `https://images.websim.com/avatar/${currentUser?.username}`, alt: currentUser?.username, className: "w-full h-full rounded-full" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1110,
+          lineNumber: 1142,
           columnNumber: 33
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1109,
+          lineNumber: 1141,
           columnNumber: 30
         }, this)
       ] }, msg.id || index, true, {
         fileName: "<stdin>",
-        lineNumber: 1056,
+        lineNumber: 1088,
         columnNumber: 21
       }, this)),
       /* @__PURE__ */ jsxDEV("div", { ref: chatEndRef }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 1115,
+        lineNumber: 1147,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 1054,
+      lineNumber: 1086,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("footer", { className: "p-4 bg-gray-800 shadow-inner", children: [
       imagePreviewUrl && /* @__PURE__ */ jsxDEV("div", { className: "relative p-2 border-b border-gray-700 mb-2", children: [
         /* @__PURE__ */ jsxDEV("img", { src: imagePreviewUrl, alt: "Preview", className: "max-h-24 rounded-md" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1121,
+          lineNumber: 1153,
           columnNumber: 25
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -1193,7 +1215,7 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
             "aria-label": "Remove image",
             children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-times text-xs" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 1127,
+              lineNumber: 1159,
               columnNumber: 29
             }, this)
           },
@@ -1201,21 +1223,21 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 1122,
+            lineNumber: 1154,
             columnNumber: 25
           },
           this
         )
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 1120,
+        lineNumber: 1152,
         columnNumber: 21
       }, this),
       /* @__PURE__ */ jsxDEV("form", { onSubmit: handleSendMessage, className: "flex gap-2 items-center", children: [
         /* @__PURE__ */ jsxDEV("div", { className: "relative", ref: voiceSelectorRef, children: [
           /* @__PURE__ */ jsxDEV(VoiceSelectorButton, { selectedVoice, onClick: () => setIsVoiceSelectorOpen((prev) => !prev) }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 1133,
+            lineNumber: 1165,
             columnNumber: 25
           }, this),
           /* @__PURE__ */ jsxDEV(
@@ -1230,14 +1252,14 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
             false,
             {
               fileName: "<stdin>",
-              lineNumber: 1134,
+              lineNumber: 1166,
               columnNumber: 25
             },
             this
           )
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 1132,
+          lineNumber: 1164,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV(
@@ -1253,7 +1275,7 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 1141,
+            lineNumber: 1173,
             columnNumber: 21
           },
           this
@@ -1267,7 +1289,7 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
             disabled: isSubmitDisabled,
             children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-paperclip text-gray-300" }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 1154,
+              lineNumber: 1186,
               columnNumber: 25
             }, this)
           },
@@ -1275,7 +1297,7 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 1148,
+            lineNumber: 1180,
             columnNumber: 21
           },
           this
@@ -1294,58 +1316,58 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 1156,
+            lineNumber: 1188,
             columnNumber: 21
           },
           this
         ),
         /* @__PURE__ */ jsxDEV("button", { type: "submit", className: "bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-900 disabled:cursor-not-allowed text-white font-bold p-2 rounded-md focus-ring w-12 h-10 flex items-center justify-center", disabled: isSubmitDisabled || !userInput.trim() && !selectedImage, children: isUserSubmitting ? /* @__PURE__ */ jsxDEV("div", { className: "w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1165,
+          lineNumber: 1197,
           columnNumber: 45
         }, this) : /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-paper-plane" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1165,
+          lineNumber: 1197,
           columnNumber: 148
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1164,
+          lineNumber: 1196,
           columnNumber: 21
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 1131,
+        lineNumber: 1163,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 1118,
+      lineNumber: 1150,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed inset-0 bg-black bg-opacity-50 z-40 ${isSettingsOpen ? "block" : "hidden"}`, onClick: () => setIsSettingsOpen(false) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 1171,
+      lineNumber: 1203,
       columnNumber: 13
     }, this),
     /* @__PURE__ */ jsxDEV("div", { className: `fixed bottom-0 left-0 right-0 bg-gray-800 p-6 rounded-t-2xl shadow-2xl z-50 settings-panel ${isSettingsOpen ? "open" : "closed"}`, children: [
       /* @__PURE__ */ jsxDEV("div", { className: "flex justify-between items-center mb-4", children: [
         /* @__PURE__ */ jsxDEV("h2", { className: "text-lg font-semibold", children: "AI Settings" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1174,
+          lineNumber: 1206,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("button", { onClick: () => setIsSettingsOpen(false), className: "p-2 rounded-md hover:bg-gray-700 focus-ring", children: /* @__PURE__ */ jsxDEV("i", { className: "fa-solid fa-times" }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1176,
+          lineNumber: 1208,
           columnNumber: 25
         }, this) }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 1175,
+          lineNumber: 1207,
           columnNumber: 21
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 1173,
+        lineNumber: 1205,
         columnNumber: 17
       }, this),
       /* @__PURE__ */ jsxDEV("div", { className: "space-y-6", children: [
@@ -1354,17 +1376,17 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
             "Other users to learn from: ",
             /* @__PURE__ */ jsxDEV("span", { className: "font-bold text-indigo-400", children: aiDataSourceCount === 0 ? "Just Me" : aiDataSourceCount }, void 0, false, {
               fileName: "<stdin>",
-              lineNumber: 1182,
+              lineNumber: 1214,
               columnNumber: 56
             }, this)
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 1181,
+            lineNumber: 1213,
             columnNumber: 25
           }, this),
           /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mb-3", children: "Controls how many random users' chat snippets the AI can use." }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 1184,
+            lineNumber: 1216,
             columnNumber: 25
           }, this),
           /* @__PURE__ */ jsxDEV(
@@ -1382,166 +1404,46 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
             false,
             {
               fileName: "<stdin>",
-              lineNumber: 1185,
+              lineNumber: 1217,
               columnNumber: 25
             },
             this
           )
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 1180,
+          lineNumber: 1212,
           columnNumber: 21
         }, this),
         /* @__PURE__ */ jsxDEV("div", { className: "border-t border-gray-700 pt-6", children: [
           /* @__PURE__ */ jsxDEV("h3", { className: "text-md font-semibold mb-3", children: "Content Filter" }, void 0, false, {
             fileName: "<stdin>",
-            lineNumber: 1196,
+            lineNumber: 1228,
             columnNumber: 26
           }, this),
           /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between", children: [
             /* @__PURE__ */ jsxDEV("div", { children: [
               /* @__PURE__ */ jsxDEV("label", { htmlFor: "profanityFilter", className: "font-medium text-gray-300", children: "Profanity Filter" }, void 0, false, {
                 fileName: "<stdin>",
-                lineNumber: 1199,
+                lineNumber: 1231,
                 columnNumber: 33
               }, this),
               /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mt-1", children: "When enabled, the AI will avoid responses containing PG-13+ language." }, void 0, false, {
                 fileName: "<stdin>",
-                lineNumber: 1200,
+                lineNumber: 1232,
                 columnNumber: 33
               }, this)
             ] }, void 0, true, {
               fileName: "<stdin>",
-              lineNumber: 1198,
+              lineNumber: 1230,
               columnNumber: 29
             }, this),
             /* @__PURE__ */ jsxDEV("label", { className: "toggle-switch", children: [
               /* @__PURE__ */ jsxDEV("input", { id: "profanityFilter", type: "checkbox", checked: profanityFilter, onChange: () => setProfanityFilter((prev) => !prev) }, void 0, false, {
                 fileName: "<stdin>",
-                lineNumber: 1203,
-                columnNumber: 33
-              }, this),
-              /* @__PURE__ */ jsxDEV("span", { className: "toggle-slider" }, void 0, false, {
-                fileName: "<stdin>",
-                lineNumber: 1204,
-                columnNumber: 33
-              }, this)
-            ] }, void 0, true, {
-              fileName: "<stdin>",
-              lineNumber: 1202,
-              columnNumber: 29
-            }, this)
-          ] }, void 0, true, {
-            fileName: "<stdin>",
-            lineNumber: 1197,
-            columnNumber: 26
-          }, this)
-        ] }, void 0, true, {
-          fileName: "<stdin>",
-          lineNumber: 1195,
-          columnNumber: 21
-        }, this),
-        /* @__PURE__ */ jsxDEV("div", { className: "border-t border-gray-700 pt-6", children: [
-          /* @__PURE__ */ jsxDEV("h3", { className: "text-md font-semibold mb-3", children: "Passthrough Network" }, void 0, false, {
-            fileName: "<stdin>",
-            lineNumber: 1209,
-            columnNumber: 26
-          }, this),
-          /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between", children: [
-            /* @__PURE__ */ jsxDEV("div", { children: [
-              /* @__PURE__ */ jsxDEV("label", { htmlFor: "usePassthrough", className: "font-medium text-gray-300", children: "Use Passthrough on Failure" }, void 0, false, {
-                fileName: "<stdin>",
-                lineNumber: 1212,
-                columnNumber: 33
-              }, this),
-              /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mt-1", children: "If your AI request fails, send it to another user to process." }, void 0, false, {
-                fileName: "<stdin>",
-                lineNumber: 1213,
-                columnNumber: 33
-              }, this)
-            ] }, void 0, true, {
-              fileName: "<stdin>",
-              lineNumber: 1211,
-              columnNumber: 29
-            }, this),
-            /* @__PURE__ */ jsxDEV("label", { className: "toggle-switch", children: [
-              /* @__PURE__ */ jsxDEV("input", { id: "usePassthrough", type: "checkbox", checked: usePassthrough, onChange: () => setUsePassthrough((prev) => !prev) }, void 0, false, {
-                fileName: "<stdin>",
-                lineNumber: 1216,
-                columnNumber: 33
-              }, this),
-              /* @__PURE__ */ jsxDEV("span", { className: "toggle-slider" }, void 0, false, {
-                fileName: "<stdin>",
-                lineNumber: 1217,
-                columnNumber: 33
-              }, this)
-            ] }, void 0, true, {
-              fileName: "<stdin>",
-              lineNumber: 1215,
-              columnNumber: 29
-            }, this)
-          ] }, void 0, true, {
-            fileName: "<stdin>",
-            lineNumber: 1210,
-            columnNumber: 26
-          }, this),
-          /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between mt-4", children: [
-            /* @__PURE__ */ jsxDEV("div", { children: [
-              /* @__PURE__ */ jsxDEV("label", { htmlFor: "allowPassthrough", className: "font-medium text-gray-300", children: "Process Others' Requests" }, void 0, false, {
-                fileName: "<stdin>",
-                lineNumber: 1222,
-                columnNumber: 33
-              }, this),
-              /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mt-1", children: "Help others by processing their failed AI requests." }, void 0, false, {
-                fileName: "<stdin>",
-                lineNumber: 1223,
-                columnNumber: 33
-              }, this)
-            ] }, void 0, true, {
-              fileName: "<stdin>",
-              lineNumber: 1221,
-              columnNumber: 29
-            }, this),
-            /* @__PURE__ */ jsxDEV("label", { className: "toggle-switch", children: [
-              /* @__PURE__ */ jsxDEV("input", { id: "allowPassthrough", type: "checkbox", checked: allowPassthrough, onChange: handleToggleAllowPassthrough }, void 0, false, {
-                fileName: "<stdin>",
-                lineNumber: 1226,
-                columnNumber: 33
-              }, this),
-              /* @__PURE__ */ jsxDEV("span", { className: "toggle-slider" }, void 0, false, {
-                fileName: "<stdin>",
-                lineNumber: 1227,
-                columnNumber: 33
-              }, this)
-            ] }, void 0, true, {
-              fileName: "<stdin>",
-              lineNumber: 1225,
-              columnNumber: 30
-            }, this)
-          ] }, void 0, true, {
-            fileName: "<stdin>",
-            lineNumber: 1220,
-            columnNumber: 26
-          }, this)
-        ] }, void 0, true, {
-          fileName: "<stdin>",
-          lineNumber: 1208,
-          columnNumber: 21
-        }, this),
-        /* @__PURE__ */ jsxDEV("div", { className: "border-t border-gray-700 pt-6", children: [
-          /* @__PURE__ */ jsxDEV("h3", { className: "text-md font-semibold mb-3 text-red-400", children: "Danger Zone" }, void 0, false, {
-            fileName: "<stdin>",
-            lineNumber: 1232,
-            columnNumber: 25
-          }, this),
-          /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between", children: [
-            /* @__PURE__ */ jsxDEV("div", { children: [
-              /* @__PURE__ */ jsxDEV("label", { className: "font-medium text-gray-300", children: "Reset Chat History" }, void 0, false, {
-                fileName: "<stdin>",
                 lineNumber: 1235,
                 columnNumber: 33
               }, this),
-              /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mt-1", children: "Permanently delete all your messages from solo and realtime chats." }, void 0, false, {
+              /* @__PURE__ */ jsxDEV("span", { className: "toggle-slider" }, void 0, false, {
                 fileName: "<stdin>",
                 lineNumber: 1236,
                 columnNumber: 33
@@ -1549,6 +1451,126 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
             ] }, void 0, true, {
               fileName: "<stdin>",
               lineNumber: 1234,
+              columnNumber: 29
+            }, this)
+          ] }, void 0, true, {
+            fileName: "<stdin>",
+            lineNumber: 1229,
+            columnNumber: 26
+          }, this)
+        ] }, void 0, true, {
+          fileName: "<stdin>",
+          lineNumber: 1227,
+          columnNumber: 21
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "border-t border-gray-700 pt-6", children: [
+          /* @__PURE__ */ jsxDEV("h3", { className: "text-md font-semibold mb-3", children: "Passthrough Network" }, void 0, false, {
+            fileName: "<stdin>",
+            lineNumber: 1241,
+            columnNumber: 26
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between", children: [
+            /* @__PURE__ */ jsxDEV("div", { children: [
+              /* @__PURE__ */ jsxDEV("label", { htmlFor: "usePassthrough", className: "font-medium text-gray-300", children: "Use Passthrough on Failure" }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1244,
+                columnNumber: 33
+              }, this),
+              /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mt-1", children: "If your AI request fails, send it to another user to process." }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1245,
+                columnNumber: 33
+              }, this)
+            ] }, void 0, true, {
+              fileName: "<stdin>",
+              lineNumber: 1243,
+              columnNumber: 29
+            }, this),
+            /* @__PURE__ */ jsxDEV("label", { className: "toggle-switch", children: [
+              /* @__PURE__ */ jsxDEV("input", { id: "usePassthrough", type: "checkbox", checked: usePassthrough, onChange: () => setUsePassthrough((prev) => !prev) }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1248,
+                columnNumber: 33
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { className: "toggle-slider" }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1249,
+                columnNumber: 33
+              }, this)
+            ] }, void 0, true, {
+              fileName: "<stdin>",
+              lineNumber: 1247,
+              columnNumber: 29
+            }, this)
+          ] }, void 0, true, {
+            fileName: "<stdin>",
+            lineNumber: 1242,
+            columnNumber: 26
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between mt-4", children: [
+            /* @__PURE__ */ jsxDEV("div", { children: [
+              /* @__PURE__ */ jsxDEV("label", { htmlFor: "allowPassthrough", className: "font-medium text-gray-300", children: "Process Others' Requests" }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1254,
+                columnNumber: 33
+              }, this),
+              /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mt-1", children: "Help others by processing their failed AI requests." }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1255,
+                columnNumber: 33
+              }, this)
+            ] }, void 0, true, {
+              fileName: "<stdin>",
+              lineNumber: 1253,
+              columnNumber: 29
+            }, this),
+            /* @__PURE__ */ jsxDEV("label", { className: "toggle-switch", children: [
+              /* @__PURE__ */ jsxDEV("input", { id: "allowPassthrough", type: "checkbox", checked: allowPassthrough, onChange: handleToggleAllowPassthrough }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1258,
+                columnNumber: 33
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { className: "toggle-slider" }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1259,
+                columnNumber: 33
+              }, this)
+            ] }, void 0, true, {
+              fileName: "<stdin>",
+              lineNumber: 1257,
+              columnNumber: 30
+            }, this)
+          ] }, void 0, true, {
+            fileName: "<stdin>",
+            lineNumber: 1252,
+            columnNumber: 26
+          }, this)
+        ] }, void 0, true, {
+          fileName: "<stdin>",
+          lineNumber: 1240,
+          columnNumber: 21
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "border-t border-gray-700 pt-6", children: [
+          /* @__PURE__ */ jsxDEV("h3", { className: "text-md font-semibold mb-3 text-red-400", children: "Danger Zone" }, void 0, false, {
+            fileName: "<stdin>",
+            lineNumber: 1264,
+            columnNumber: 25
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "flex items-center justify-between", children: [
+            /* @__PURE__ */ jsxDEV("div", { children: [
+              /* @__PURE__ */ jsxDEV("label", { className: "font-medium text-gray-300", children: "Reset Chat History" }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1267,
+                columnNumber: 33
+              }, this),
+              /* @__PURE__ */ jsxDEV("p", { className: "text-xs text-gray-400 mt-1", children: "Permanently delete all your messages from solo and realtime chats." }, void 0, false, {
+                fileName: "<stdin>",
+                lineNumber: 1268,
+                columnNumber: 33
+              }, this)
+            ] }, void 0, true, {
+              fileName: "<stdin>",
+              lineNumber: 1266,
               columnNumber: 29
             }, this),
             /* @__PURE__ */ jsxDEV(
@@ -1562,40 +1584,40 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
               false,
               {
                 fileName: "<stdin>",
-                lineNumber: 1238,
+                lineNumber: 1270,
                 columnNumber: 29
               },
               this
             )
           ] }, void 0, true, {
             fileName: "<stdin>",
-            lineNumber: 1233,
+            lineNumber: 1265,
             columnNumber: 25
           }, this)
         ] }, void 0, true, {
           fileName: "<stdin>",
-          lineNumber: 1231,
+          lineNumber: 1263,
           columnNumber: 21
         }, this)
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 1179,
+        lineNumber: 1211,
         columnNumber: 17
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 1172,
+      lineNumber: 1204,
       columnNumber: 13
     }, this),
     isResetConfirmOpen && /* @__PURE__ */ jsxDEV("div", { className: "fixed inset-0 bg-black bg-opacity-75 z-[60] flex items-center justify-center p-4", children: /* @__PURE__ */ jsxDEV("div", { className: "bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full border border-gray-700", children: [
       /* @__PURE__ */ jsxDEV("h2", { className: "text-lg font-bold text-red-400", children: "Are you sure?" }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 1253,
+        lineNumber: 1285,
         columnNumber: 25
       }, this),
       /* @__PURE__ */ jsxDEV("p", { className: "text-sm text-gray-300 mt-2 mb-6", children: "This action is irreversible. It will permanently delete your personal chat history and all of your messages from the realtime chat." }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 1254,
+        lineNumber: 1286,
         columnNumber: 25
       }, this),
       /* @__PURE__ */ jsxDEV("div", { className: "flex justify-end gap-4", children: [
@@ -1610,7 +1632,7 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 1258,
+            lineNumber: 1290,
             columnNumber: 29
           },
           this
@@ -1626,34 +1648,34 @@ Respond ONLY with a JSON object containing a 'selected_ids' key (an array of sni
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 1264,
+            lineNumber: 1296,
             columnNumber: 29
           },
           this
         )
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 1257,
+        lineNumber: 1289,
         columnNumber: 25
       }, this)
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 1252,
+      lineNumber: 1284,
       columnNumber: 21
     }, this) }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 1251,
+      lineNumber: 1283,
       columnNumber: 17
     }, this)
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 1026,
+    lineNumber: 1058,
     columnNumber: 9
   }, this);
 }
 const root = createRoot(document.getElementById("root"));
 root.render(/* @__PURE__ */ jsxDEV(App, {}, void 0, false, {
   fileName: "<stdin>",
-  lineNumber: 1279,
+  lineNumber: 1311,
   columnNumber: 13
 }));

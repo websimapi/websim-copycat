@@ -8,45 +8,36 @@
         },
         "messages": {
           "type": "jsonb",
-          "description": "An array of message objects from the user. Each object can contain text, audioUrl, timestamp, voice, imageUrl, and imageDescription."
+          "description": "An array of message objects from the user. Each object contains text, audioUrl, timestamp, and voice."
         }
       },
       "realtime_chat_messages": {
         "id": {
-          "type": "uuid",
-          "description": "Unique identifier for the message."
+            "type": "uuid",
+            "description": "Unique identifier for the message."
         },
         "author": {
-          "type": "text",
-          "description": "'user', 'ai', or 'system'."
+            "type": "text",
+            "description": "'user', 'ai', or 'system'."
         },
         "username": {
-          "type": "text",
-          "description": "Username of the sender if author is 'user'."
+            "type": "text",
+            "description": "Username of the sender if author is 'user'."
         },
         "text": {
-          "type": "text",
-          "description": "The text content of the message."
+            "type": "text",
+            "description": "The text content of the message."
         },
         "audio_urls": {
-          "type": "jsonb",
-          "description": "An array of audio URLs for the message."
-        },
-        "image_url": {
-          "type": "text",
-          "description": "URL of an image attached to the message."
-        },
-        "image_description": {
-          "type": "text",
-          "description": "AI-generated description of the attached image."
+            "type": "jsonb",
+            "description": "An array of audio URLs for the message."
         },
         "created_at": {
-          "type": "timestamptz",
-          "description": "Timestamp when the message was created."
+            "type": "timestamptz",
+            "description": "Timestamp when the message was created."
         }
       }
     },
     "instructions": "Each user has a single row in the 'chat_histories' table, identified by their user ID. The 'messages' column contains a JSON array of all chat snippets they've generated. The `realtime_chat_messages` table contains the shared history for the public chat room. To get a random set of snippets for the AI, you can query the 'chat_histories' table and sample rows."
   }
 }
-
